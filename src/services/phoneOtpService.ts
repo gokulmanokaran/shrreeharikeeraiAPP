@@ -119,9 +119,23 @@ export async function sendPhoneOtp(
     }
     _recaptchaVerifier = null;
 
+    console.error("[PhoneOTP] Firebase sendPhoneOtp error:", err);
+
     const code: string = err?.code || "";
     const msg: string = err?.message || "";
 
+    if (/operation.not.allowed/i.test(msg) || code === "auth/operation-not-allowed" || /region/i.test(msg)) {
+      return {
+        error:
+          "SMS region not enabled. Please enable India (+91) in Firebase Console → Authentication → Settings → SMS Region Policy.",
+      };
+    }
+    if (code === "auth/unauthorized-domain" || /unauthorized.domain/i.test(msg)) {
+      return {
+        error:
+          "Domain not authorized. Please add this domain to Firebase Console → Authentication → Settings → Authorized Domains.",
+      };
+    }
     if (code === "auth/invalid-phone-number" || /invalid.phone/i.test(msg)) {
       return { error: "Invalid mobile number. Please enter a valid 10-digit Indian number." };
     }
@@ -144,7 +158,7 @@ export async function sendPhoneOtp(
       return { error: "SMS quota exceeded. Please try again later." };
     }
     return {
-      error: "Failed to send OTP. Please check the number and try again.",
+      error: msg || "Failed to send OTP. Please check the number and try again.",
     };
   }
 }
