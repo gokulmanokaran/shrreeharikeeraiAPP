@@ -57,7 +57,32 @@ export async function fetchProfile(
       .eq("id", userId)
       .maybeSingle();
 
-    if (data) return mapProfile(data);
+    if (data) {
+      if (!data.full_name && fallback?.fullName) {
+        try {
+          await supabase
+            .from("profiles")
+            .update({ full_name: fallback.fullName })
+            .eq("id", userId);
+          data.full_name = fallback.fullName;
+        } catch {
+          /* ignore */
+        }
+      }
+      return mapProfile(data);
+    }
+
+    // If profile row doesn't exist yet in Supabase (e.g. fresh Google OAuth sign-in)
+    if (fallback && (fallback.email || fallback.fullName)) {
+      const newProfile: CustomerProfile = {
+        id: userId,
+        fullName: fallback.fullName || "",
+        email: fallback.email || "",
+        mobile: fallback.mobile || "",
+      };
+      await upsertProfile(newProfile);
+      return newProfile;
+    }
   } catch {
     /* fallback to metadata */
   }
@@ -68,6 +93,42 @@ export async function fetchProfile(
     email: fallback?.email || "",
     mobile: fallback?.mobile || "",
   };
+}
+
+/**
+ * Sign in using Supabase Google OAuth.
+ */
+export async function signInWithGoogle(
+  redirectTo?: string
+): Promise<{ error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { error: "Authentication service is unavailable." };
+
+  const targetRedirect =
+    redirectTo ||
+    (typeof window !== "undefined"
+      ? `${window.location.origin}/login`
+      : undefined);
+
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: targetRedirect,
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    });
+
+    if (error) {
+      return { error: error.message };
+    }
+    return {};
+  } catch (err: any) {
+    return { error: err?.message || "Failed to initiate Google sign in." };
+  }
 }
 
 export async function upsertProfile(profile: CustomerProfile): Promise<{ error?: string }> {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -6,12 +6,15 @@ import { AlertCircle } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { AuthField, AuthLayout } from "../components/layout/AuthLayout";
 import { EmailOtpVerification } from "../components/features/EmailOtpVerification";
+import { GoogleAuthButton } from "../components/features/GoogleAuthButton";
 import { loginCustomer } from "../services/authService";
+import { useAuth } from "../store/AuthContext";
 import { validatePassword, validateRequiredEmail } from "../utils/validation";
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, initializing } = useAuth();
   const from =
     (location.state as { from?: { pathname?: string } | string } | null)?.from;
   const targetPath = typeof from === "string" ? from : from?.pathname || "/";
@@ -21,6 +24,45 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
   const [loading, setLoading] = useState(false);
+
+  // Check URL params / hash for OAuth error or cancellation on return from Google
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const hashStr = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
+    const hashParams = new URLSearchParams(hashStr);
+
+    const errorDesc =
+      searchParams.get("error_description") ||
+      hashParams.get("error_description") ||
+      searchParams.get("error") ||
+      hashParams.get("error");
+
+    if (errorDesc) {
+      setErrors({ form: decodeURIComponent(errorDesc.replace(/\+/g, " ")) });
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("shreehari_auth_redirect");
+      }
+      window.history.replaceState({}, document.title, location.pathname);
+    }
+  }, [location.search, location.hash, location.pathname]);
+
+  // If already authenticated or just returned from Google OAuth, proceed to target
+  useEffect(() => {
+    if (!initializing && user) {
+      const saved =
+        typeof window !== "undefined"
+          ? sessionStorage.getItem("shreehari_auth_redirect")
+          : null;
+      if (saved) {
+        sessionStorage.removeItem("shreehari_auth_redirect");
+        navigate(saved, { replace: true });
+      } else if (targetPath && targetPath !== "/login") {
+        navigate(targetPath, { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
+    }
+  }, [user, initializing, targetPath, navigate]);
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -138,6 +180,11 @@ export default function LoginPage() {
                 Sign In
               </Button>
             </form>
+
+            <GoogleAuthButton
+              targetPath={targetPath}
+              onError={(err) => setErrors({ form: err })}
+            />
 
             <div className="pt-2 text-center">
               <p className="text-sm text-[#666666]">

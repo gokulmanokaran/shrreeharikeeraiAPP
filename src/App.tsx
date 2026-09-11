@@ -72,7 +72,17 @@ function RequireAuth({ children }: { children: ReactNode }) {
 function GuestOnly({ children }: { children: ReactNode }) {
   const { user, initializing } = useAuth();
   if (initializing) return <PageFallback />;
-  if (user) return <Navigate to="/" replace />;
+  if (user) {
+    const savedRedirect =
+      typeof window !== "undefined"
+        ? sessionStorage.getItem("shreehari_auth_redirect")
+        : null;
+    if (savedRedirect) {
+      sessionStorage.removeItem("shreehari_auth_redirect");
+      return <Navigate to={savedRedirect} replace />;
+    }
+    return <Navigate to="/" replace />;
+  }
   return <>{children}</>;
 }
 

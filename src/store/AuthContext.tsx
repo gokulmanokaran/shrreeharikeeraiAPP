@@ -29,7 +29,9 @@ function metaFromUser(user: User | null) {
   if (!user) return { email: "", fullName: "", mobile: "" };
   return {
     email: user.email || "",
-    fullName: String(user.user_metadata?.full_name || ""),
+    fullName: String(
+      user.user_metadata?.full_name || user.user_metadata?.name || ""
+    ),
     mobile: String(user.user_metadata?.mobile || ""),
   };
 }

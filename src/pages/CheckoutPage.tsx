@@ -148,7 +148,11 @@ export default function CheckoutPage() {
 
   // Prefill from the logged-in profile without overwriting details the customer already typed
   useEffect(() => {
-    const name = profile?.fullName || String(user?.user_metadata?.full_name || "");
+    const name =
+      profile?.fullName ||
+      String(
+        user?.user_metadata?.full_name || user?.user_metadata?.name || ""
+      );
     const mail = profile?.email || user?.email || "";
     const phone = profile?.mobile || String(user?.user_metadata?.mobile || "");
     if (name) setFullName((prev) => prev || name);
