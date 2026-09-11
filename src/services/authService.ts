@@ -226,6 +226,8 @@ export async function registerCustomer(input: {
   email: string;
   password: string;
   confirmPassword: string;
+  mobile?: string;
+  phoneVerified?: boolean;
 }): Promise<AuthActionResult> {
   const nameErr = validateName(input.fullName);
   if (nameErr) return { error: nameErr };
@@ -241,6 +243,7 @@ export async function registerCustomer(input: {
 
   const email = input.email.trim().toLowerCase();
   const fullName = input.fullName.trim();
+  const cleanMobile = (input.mobile || "").replace(/\D/g, "");
 
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -248,6 +251,8 @@ export async function registerCustomer(input: {
     options: {
       data: {
         full_name: fullName,
+        mobile: cleanMobile,
+        phone_verified: !!input.phoneVerified,
       },
     },
   });
@@ -277,6 +282,7 @@ export async function registerCustomer(input: {
       id: data.user.id,
       fullName,
       email,
+      mobile: cleanMobile,
     });
     return { user: data.user };
   }

@@ -5,6 +5,7 @@ import {
   type ConfirmationResult,
 } from "firebase/auth";
 import { getFirebaseAuth } from "../lib/firebase";
+import { getSupabaseClient } from "../lib/supabase";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 export const OTP_EXPIRY_SECONDS = 120; // 2 minutes
@@ -220,3 +221,86 @@ export function clearRecaptchaVerifier(): void {
   }
   _recaptchaVerifier = null;
 }
+
+// ── Supabase Session Bridge (Zero Twilio — Pure Firebase OTP) ───────────────
+
+/**
+ * Exchange a Firebase-verified phone number for an authenticated Supabase session.
+ */
+export async function completePhoneLogin(phone: string): Promise<{ error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { error: "Authentication service is unavailable." };
+
+  try {
+    const res = await fetch("/api/phone-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, mode: "login" }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      return { error: data.error || "No account found with this number. Please sign up." };
+    }
+
+    // Exchange token_hash for an active Supabase session
+    const { error: verifyErr } = await supabase.auth.verifyOtp({
+      token_hash: data.tokenHash,
+      type: "magiclink",
+    });
+
+    if (verifyErr) {
+      return { error: verifyErr.message || "Failed to establish login session." };
+    }
+
+    return {};
+  } catch (err: any) {
+    return { error: err?.message || "Network error. Please try again." };
+  }
+}
+
+/**
+ * Create a new Supabase customer account with a Firebase-verified phone number
+ * and sign in immediately.
+ */
+export async function completePhoneSignup(params: {
+  phone: string;
+  fullName: string;
+  email?: string;
+}): Promise<{ error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { error: "Authentication service is unavailable." };
+
+  try {
+    const res = await fetch("/api/phone-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone: params.phone,
+        fullName: params.fullName,
+        email: params.email,
+        mode: "signup",
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      return { error: data.error || "Failed to create account with mobile number." };
+    }
+
+    // Exchange token_hash for an active Supabase session
+    const { error: verifyErr } = await supabase.auth.verifyOtp({
+      token_hash: data.tokenHash,
+      type: "magiclink",
+    });
+
+    if (verifyErr) {
+      return { error: verifyErr.message || "Account created, but failed to log in automatically. Please sign in." };
+    }
+
+    return {};
+  } catch (err: any) {
+    return { error: err?.message || "Network error. Please try again." };
+  }
+}
+

@@ -1,255 +1,18 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import type { FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertCircle, Mail, Phone, RefreshCw, ArrowLeft } from "lucide-react";
+import { AlertCircle, Mail, Phone } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { AuthField, AuthLayout } from "../components/layout/AuthLayout";
 import { EmailOtpVerification } from "../components/features/EmailOtpVerification";
+import { PhoneOtpVerification } from "../components/features/PhoneOtpVerification";
 import { GoogleAuthButton } from "../components/features/GoogleAuthButton";
-import {
-  loginCustomer,
-  sendPhoneLoginOtp,
-  verifyPhoneLoginOtp,
-  resendPhoneLoginOtp,
-} from "../services/authService";
+import { loginCustomer } from "../services/authService";
+import { completePhoneLogin, isValidIndianPhone } from "../services/phoneOtpService";
 import { useAuth } from "../store/AuthContext";
 import { validatePassword, validateRequiredEmail } from "../utils/validation";
 
-const RESEND_COOLDOWN = 60;
-const EXPIRY_SECONDS = 120;
-const MAX_ATTEMPTS = 3;
-
-// ── Inline Phone OTP panel (no new component file needed) ────────────────────
-function PhoneOtpPanel({
-  phone,
-  onSuccess,
-  onBack,
-}: {
-  phone: string;
-  onSuccess: () => void;
-  onBack: () => void;
-}) {
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
-  const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
-  const [verifying, setVerifying] = useState(false);
-  const [resending, setResending] = useState(false);
-  const [resendTimer, setResendTimer] = useState(RESEND_COOLDOWN);
-  const [expiryTimer, setExpiryTimer] = useState(EXPIRY_SECONDS);
-  const [canResend, setCanResend] = useState(false);
-  const attemptsRef = useRef(MAX_ATTEMPTS);
-  const blockedRef = useRef(false);
-  const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
-
-  // Auto-focus first box
-  useEffect(() => {
-    const t = setTimeout(() => inputsRef.current[0]?.focus(), 200);
-    return () => clearTimeout(t);
-  }, []);
-
-  // Resend countdown
-  useEffect(() => {
-    setCanResend(false);
-    const iv = setInterval(() => {
-      setResendTimer((p) => {
-        if (p <= 1) { setCanResend(true); clearInterval(iv); return 0; }
-        return p - 1;
-      });
-    }, 1000);
-    return () => clearInterval(iv);
-  }, [info]); // restart on each resend
-
-  // Expiry countdown
-  useEffect(() => {
-    const iv = setInterval(() => {
-      setExpiryTimer((p) => {
-        if (p <= 1) {
-          clearInterval(iv);
-          if (!blockedRef.current) {
-            setError("OTP has expired. Please click Resend.");
-            setOtp(["", "", "", "", "", ""]);
-          }
-          return 0;
-        }
-        return p - 1;
-      });
-    }, 1000);
-    return () => clearInterval(iv);
-  }, [info]); // restart on each resend
-
-  const handleVerify = async (codeOverride?: string) => {
-    if (blockedRef.current || expiryTimer <= 0) return;
-    const code = codeOverride || otp.join("");
-    if (code.length !== 6) { setError("Please enter the complete 6-digit OTP."); return; }
-
-    setVerifying(true);
-    setError("");
-    const res = await verifyPhoneLoginOtp(phone, code);
-    setVerifying(false);
-
-    if (!res.error) { onSuccess(); return; }
-
-    const left = attemptsRef.current - 1;
-    attemptsRef.current = left;
-    if (left <= 0) {
-      blockedRef.current = true;
-      setError("Too many incorrect attempts. Please resend a new OTP.");
-      setOtp(["", "", "", "", "", ""]);
-      return;
-    }
-    setError(`${res.error} (${left} attempt${left === 1 ? "" : "s"} left)`);
-    setOtp(["", "", "", "", "", ""]);
-    setTimeout(() => inputsRef.current[0]?.focus(), 50);
-  };
-
-  const handleResend = async () => {
-    if (!canResend || resending) return;
-    setResending(true);
-    setError("");
-    blockedRef.current = false;
-    attemptsRef.current = MAX_ATTEMPTS;
-    setOtp(["", "", "", "", "", ""]);
-    setResendTimer(RESEND_COOLDOWN);
-    setExpiryTimer(EXPIRY_SECONDS);
-    setCanResend(false);
-
-    const res = await resendPhoneLoginOtp(phone);
-    setResending(false);
-    if (res.error) { setError(res.error); return; }
-    setInfo("new"); // trigger timer restart
-    setTimeout(() => inputsRef.current[0]?.focus(), 200);
-  };
-
-  const handleChange = (i: number, val: string) => {
-    const ch = val.replace(/\D/g, "").slice(-1);
-    const n = [...otp]; n[i] = ch; setOtp(n); setError("");
-    if (ch && i < 5) inputsRef.current[i + 1]?.focus();
-    if (ch && i === 5 && n.join("").length === 6) handleVerify(n.join(""));
-  };
-
-  const handleKeyDown = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace" && !otp[i] && i > 0) inputsRef.current[i - 1]?.focus();
-  };
-
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    const p = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-    if (!p) return;
-    const n = Array.from({ length: 6 }, (_, i) => p[i] || "");
-    setOtp(n);
-    inputsRef.current[Math.min(p.length, 5)]?.focus();
-    if (p.length === 6) handleVerify(p);
-  };
-
-  const maskedPhone = `+91 ${phone.slice(0, 2)}****${phone.slice(-4)}`;
-  const expiryMin = Math.floor(expiryTimer / 60);
-  const expirySec = expiryTimer % 60;
-
-  return (
-    <motion.div
-      key="phone-otp"
-      initial={{ opacity: 0, x: 15 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -15 }}
-      transition={{ duration: 0.18 }}
-      className="space-y-4"
-    >
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-xs font-bold text-[#00A651] hover:underline cursor-pointer"
-      >
-        <ArrowLeft size={14} />
-        Change number
-      </button>
-
-      <div className="bg-[#F5FCF8] border border-[#B9E8CE]/60 rounded-[12px] p-3 text-xs text-[#087A43]">
-        <p className="font-semibold">
-          OTP sent to <span className="font-black text-[#111111]">{maskedPhone}</span>
-        </p>
-        <p className="text-[11px] text-[#555555] mt-0.5">
-          Enter the 6-digit code from your SMS.
-          {expiryTimer > 0 && (
-            <span className={`ml-1.5 font-bold ${expiryTimer <= 30 ? "text-[#EA4335]" : "text-[#087A43]"}`}>
-              Expires in {expiryMin > 0 ? `${expiryMin}m ` : ""}
-              {String(expirySec).padStart(2, "0")}s
-            </span>
-          )}
-        </p>
-      </div>
-
-      {/* 6-digit OTP boxes */}
-      <div className="flex justify-between gap-2 py-1">
-        {otp.map((digit, i) => (
-          <input
-            key={i}
-            ref={(el) => { inputsRef.current[i] = el; }}
-            type="text"
-            inputMode="numeric"
-            maxLength={1}
-            value={digit}
-            onChange={(e) => handleChange(i, e.target.value)}
-            onKeyDown={(e) => handleKeyDown(i, e)}
-            onPaste={handlePaste}
-            disabled={blockedRef.current || expiryTimer <= 0}
-            aria-label={`OTP digit ${i + 1}`}
-            className={`w-11 h-13 text-center text-lg font-black rounded-[12px] border-2 transition-all focus:outline-none disabled:opacity-40 ${
-              digit
-                ? "border-[#00A651] bg-[#EAF8F0]/30 text-[#00A651]"
-                : error
-                ? "border-[#EA4335] bg-red-50/30 text-[#111111]"
-                : "border-[#EAEAEA] focus:border-[#00A651] text-[#111111]"
-            }`}
-          />
-        ))}
-      </div>
-
-      {error && (
-        <motion.p
-          initial={{ opacity: 0, y: -4 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-[#EA4335] text-xs font-semibold flex items-center gap-1.5 bg-red-50 border border-red-100 rounded-[10px] p-2.5"
-        >
-          <AlertCircle size={14} className="shrink-0" />
-          <span>{error}</span>
-        </motion.p>
-      )}
-
-      <Button
-        variant="primary"
-        size="lg"
-        fullWidth
-        loading={verifying}
-        disabled={blockedRef.current || expiryTimer <= 0 || otp.join("").length < 6}
-        onClick={() => handleVerify()}
-      >
-        {verifying ? "Verifying…" : "Verify & Sign In"}
-      </Button>
-
-      <div className="flex items-center justify-between text-xs pt-1">
-        <span className="text-[#777777]">Didn't receive the OTP?</span>
-        {canResend ? (
-          <button
-            type="button"
-            onClick={handleResend}
-            disabled={resending}
-            className="font-bold text-[#00A651] hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw size={12} className={resending ? "animate-spin" : ""} />
-            {resending ? "Sending…" : "Resend OTP"}
-          </button>
-        ) : (
-          <span className="text-[#999999] font-medium">
-            Resend in <span className="font-bold text-[#111111]">{resendTimer}s</span>
-          </span>
-        )}
-      </div>
-    </motion.div>
-  );
-}
-
-// ── Main Login Page ───────────────────────────────────────────────────────────
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -258,26 +21,29 @@ export default function LoginPage() {
     (location.state as { from?: { pathname?: string } | string } | null)?.from;
   const targetPath = typeof from === "string" ? from : from?.pathname || "/";
 
-  // Mode: email login or phone login
+  // Mode: "email" | "phone"
   const [mode, setMode] = useState<"email" | "phone">("email");
 
   // Email login state
-  const [emailStep, setEmailStep] = useState<"login" | "otp">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [emailErrors, setEmailErrors] = useState<{ email?: string; password?: string; form?: string }>({});
+  const [emailErrors, setEmailErrors] = useState<Record<string, string | undefined>>({});
   const [emailLoading, setEmailLoading] = useState(false);
+  const [emailStep, setEmailStep] = useState<"login" | "otp">("login");
 
-  // Phone login state
-  const [phoneStep, setPhoneStep] = useState<"enter" | "sending" | "otp">("enter");
+  // Phone login state (100% Firebase OTP, zero Twilio)
   const [phone, setPhone] = useState("");
   const [phoneError, setPhoneError] = useState("");
-  const [phoneSending, setPhoneSending] = useState(false);
+  const [phoneStep, setPhoneStep] = useState<"enter" | "otp">("enter");
+  const [phoneCompleting, setPhoneCompleting] = useState(false);
 
-  // Check location state / URL for OAuth errors
+  // Check URL params / hash for OAuth error on return from Google
   useEffect(() => {
     const stateErr = (location.state as { error?: string } | null)?.error;
-    if (stateErr) { setEmailErrors({ form: stateErr }); return; }
+    if (stateErr) {
+      setEmailErrors({ form: stateErr });
+      return;
+    }
 
     const searchParams = new URLSearchParams(location.search);
     const hashStr = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
@@ -291,12 +57,14 @@ export default function LoginPage() {
 
     if (errorDesc) {
       setEmailErrors({ form: decodeURIComponent(errorDesc.replace(/\+/g, " ")) });
-      if (typeof window !== "undefined") sessionStorage.removeItem("shreehari_auth_redirect");
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("shreehari_auth_redirect");
+      }
       window.history.replaceState({}, document.title, location.pathname);
     }
   }, [location.search, location.hash, location.pathname, location.state]);
 
-  // Redirect if already authenticated
+  // If already authenticated, redirect
   useEffect(() => {
     if (!initializing && user) {
       const saved =
@@ -326,78 +94,105 @@ export default function LoginPage() {
     setEmailErrors({});
     const res = await loginCustomer({ email, password });
     setEmailLoading(false);
-    if (res.needsEmailVerification) { setEmailStep("otp"); return; }
-    if (res.error) { setEmailErrors({ form: res.error }); return; }
+    if (res.needsEmailVerification) {
+      setEmailStep("otp");
+      return;
+    }
+    if (res.error) {
+      setEmailErrors({ form: res.error });
+      return;
+    }
     navigate(targetPath === "/login" ? "/" : targetPath, { replace: true });
   };
 
-  const handleSendPhoneOtp = async () => {
+  const handleSendPhoneOtp = () => {
     const digits = phone.replace(/\D/g, "");
-    if (!/^[6-9]\d{9}$/.test(digits)) {
+    if (!isValidIndianPhone(digits)) {
       setPhoneError("Please enter a valid 10-digit Indian mobile number.");
       return;
     }
-    setPhoneSending(true);
     setPhoneError("");
-    const res = await sendPhoneLoginOtp(digits);
-    setPhoneSending(false);
-    if (res.error) { setPhoneError(res.error); return; }
     setPhoneStep("otp");
   };
 
-  const handlePhoneSuccess = () => {
+  const handlePhoneOtpSuccess = async (verifiedPhone: string) => {
+    setPhoneCompleting(true);
+    setPhoneError("");
+    const res = await completePhoneLogin(verifiedPhone);
+    setPhoneCompleting(false);
+
+    if (res.error) {
+      setPhoneError(res.error);
+      setPhoneStep("enter");
+      return;
+    }
+
     navigate(targetPath === "/login" ? "/" : targetPath, { replace: true });
   };
 
-  // ── Tab UI helpers ─────────────────────────────────────────────────────────
+  // ── Tab UI styling ─────────────────────────────────────────────────────────
   const tabBase =
     "flex-1 h-10 rounded-[10px] text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer";
   const tabActive = "bg-[#00A651] text-white shadow-sm";
   const tabInactive = "text-[#666666] hover:bg-gray-100";
 
-  // Determine title/subtitle based on current state
   const getTitle = () => {
-    if (mode === "phone") {
-      if (phoneStep === "otp") return "Verify OTP";
-      return "Welcome Back";
-    }
-    if (emailStep === "otp") return "Verify Your Email";
+    if (mode === "phone" && phoneStep === "otp") return "Verify Mobile OTP";
+    if (mode === "email" && emailStep === "otp") return "Verify Your Email";
     return "Welcome Back";
   };
+
   const getSubtitle = () => {
-    if (mode === "phone") {
-      if (phoneStep === "otp") return `Enter the code sent to +91 ${phone.slice(0, 2)}****${phone.slice(-4)}`;
-      return "Log in with your mobile number";
+    if (mode === "phone" && phoneStep === "otp") {
+      return `Enter the 6-digit code sent to +91 ${phone.slice(0, 2)}****${phone.slice(-4)}`;
     }
+    if (mode === "phone") return "Log in with your mobile number via OTP";
     if (emailStep === "otp") return `Enter the code sent to ${email}`;
-    return "Log in with your email and password";
+    return "Log in to your Shree Hari Keerai account";
   };
 
   return (
     <AuthLayout title={getTitle()} subtitle={getSubtitle()}>
       <AnimatePresence mode="wait">
-
-        {/* ── Email OTP verification step ─────────────────────────────────── */}
+        {/* Email OTP verification step */}
         {mode === "email" && emailStep === "otp" ? (
           <EmailOtpVerification
             key="email-otp"
             email={email}
             onSuccess={() => navigate(targetPath === "/login" ? "/" : targetPath, { replace: true })}
-            onChangeEmail={() => { setEmailStep("login"); setEmailErrors({}); }}
+            onChangeEmail={() => {
+              setEmailStep("login");
+              setEmailErrors({});
+            }}
             submitButtonText="Verify & Sign In"
           />
         ) : mode === "phone" && phoneStep === "otp" ? (
-
-          /* ── Phone OTP verification step ──────────────────────────────────── */
-          <PhoneOtpPanel
+          /* Phone OTP verification step via Firebase */
+          <motion.div
             key="phone-otp"
-            phone={phone.replace(/\D/g, "")}
-            onSuccess={handlePhoneSuccess}
-            onBack={() => setPhoneStep("enter")}
-          />
+            initial={{ opacity: 0, x: 15 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -15 }}
+            transition={{ duration: 0.18 }}
+          >
+            {phoneCompleting ? (
+              <div className="py-8 flex flex-col items-center justify-center gap-3 text-[#00A651]">
+                <div className="w-8 h-8 border-3 border-[#00A651] border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm font-bold text-[#111111]">Signing you into Shree Hari Keerai…</p>
+              </div>
+            ) : (
+              <PhoneOtpVerification
+                phone={phone.replace(/\D/g, "")}
+                title="Login Verification"
+                submitButtonText="Verify & Sign In"
+                containerId="login-phone-recaptcha"
+                onSuccess={handlePhoneOtpSuccess}
+                onCancel={() => setPhoneStep("enter")}
+              />
+            )}
+          </motion.div>
         ) : (
-
-          /* ── Main login form ──────────────────────────────────────────────── */
+          /* Main login form */
           <motion.div
             key="main-form"
             initial={{ opacity: 0, x: -15 }}
@@ -411,7 +206,10 @@ export default function LoginPage() {
               <button
                 type="button"
                 className={`${tabBase} ${mode === "email" ? tabActive : tabInactive}`}
-                onClick={() => { setMode("email"); setEmailErrors({}); }}
+                onClick={() => {
+                  setMode("email");
+                  setEmailErrors({});
+                }}
                 id="tab-email-login"
               >
                 <Mail size={14} />
@@ -420,7 +218,11 @@ export default function LoginPage() {
               <button
                 type="button"
                 className={`${tabBase} ${mode === "phone" ? tabActive : tabInactive}`}
-                onClick={() => { setMode("phone"); setPhoneError(""); setPhoneStep("enter"); }}
+                onClick={() => {
+                  setMode("phone");
+                  setPhoneError("");
+                  setPhoneStep("enter");
+                }}
                 id="tab-phone-login"
               >
                 <Phone size={14} />
@@ -429,7 +231,6 @@ export default function LoginPage() {
             </div>
 
             <AnimatePresence mode="wait">
-
               {/* Email login form */}
               {mode === "email" && (
                 <motion.form
@@ -449,7 +250,7 @@ export default function LoginPage() {
                     value={email}
                     onChange={(v) => {
                       setEmail(v);
-                      setEmailErrors((p) => ({ ...p, email: undefined, form: undefined }));
+                      setEmailErrors((e) => ({ ...e, email: undefined, form: undefined }));
                     }}
                     error={emailErrors.email}
                     placeholder="your@email.com"
@@ -464,7 +265,7 @@ export default function LoginPage() {
                       value={password}
                       onChange={(v) => {
                         setPassword(v);
-                        setEmailErrors((p) => ({ ...p, password: undefined, form: undefined }));
+                        setEmailErrors((e) => ({ ...e, password: undefined, form: undefined }));
                       }}
                       error={emailErrors.password}
                       placeholder="Enter your password"
@@ -552,16 +353,15 @@ export default function LoginPage() {
                     variant="primary"
                     size="lg"
                     fullWidth
-                    loading={phoneSending}
                     disabled={phone.replace(/\D/g, "").length < 10}
                     onClick={handleSendPhoneOtp}
                     id="send-phone-otp-btn"
                   >
-                    {phoneSending ? "Sending OTP…" : "Send OTP"}
+                    Send OTP via SMS
                   </Button>
 
                   <p className="text-[11px] text-[#888888] text-center">
-                    An OTP will be sent to your registered mobile number via SMS.
+                    A 6-digit OTP will be sent to your mobile number via Firebase SMS.
                   </p>
                 </motion.div>
               )}
@@ -581,7 +381,7 @@ export default function LoginPage() {
                   state={{ from: location.state?.from || from }}
                   className="font-bold text-[#00A651] hover:underline"
                 >
-                  Sign Up
+                  Create Account
                 </Link>
               </p>
             </div>

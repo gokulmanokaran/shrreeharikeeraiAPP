@@ -17,14 +17,20 @@ interface PhoneOtpVerificationProps {
   phone: string; // 10-digit mobile number
   onSuccess: (verifiedPhone: string) => void;
   onCancel: () => void;
+  title?: string;
+  submitButtonText?: string;
+  containerId?: string;
 }
 
-const RECAPTCHA_CONTAINER_ID = "shreehari-recaptcha-container";
+const DEFAULT_CONTAINER_ID = "shreehari-recaptcha-container";
 
 export function PhoneOtpVerification({
   phone,
   onSuccess,
   onCancel,
+  title = "Verify Mobile Number",
+  submitButtonText = "Verify OTP",
+  containerId = DEFAULT_CONTAINER_ID,
 }: PhoneOtpVerificationProps) {
   const [step, setStep] = useState<"sending" | "otp">("sending");
   const [confirmationResult, setConfirmationResult] =
@@ -50,7 +56,7 @@ export function PhoneOtpVerification({
 
   // ── Send OTP on mount ────────────────────────────────────────────────────
   const doSendOtp = useCallback(async () => {
-    const res = await sendPhoneOtp(phone, RECAPTCHA_CONTAINER_ID);
+    const res = await sendPhoneOtp(phone, containerId);
     if (res.error) {
       setError(res.error);
       setStep("otp"); // show panel anyway so user sees the error + cancel
@@ -174,7 +180,7 @@ export function PhoneOtpVerification({
     setCanResend(false);
     setOtp(["", "", "", "", "", ""]);
 
-    const res = await sendPhoneOtp(phone, RECAPTCHA_CONTAINER_ID);
+    const res = await sendPhoneOtp(phone, containerId);
     setResending(false);
 
     if (res.error) {
@@ -234,7 +240,7 @@ export function PhoneOtpVerification({
       className="mt-3 rounded-[16px] border-2 border-[#00A651]/30 bg-[#F5FCF8] p-4 flex flex-col gap-3"
     >
       {/* Invisible reCAPTCHA anchor */}
-      <div id={RECAPTCHA_CONTAINER_ID} />
+      <div id={containerId} />
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -243,7 +249,7 @@ export function PhoneOtpVerification({
             <Shield size={14} className="text-white" />
           </div>
           <div>
-            <p className="text-xs font-black text-[#111111]">Verify Mobile Number</p>
+            <p className="text-xs font-black text-[#111111]">{title}</p>
             <p className="text-[11px] text-[#087A43] font-semibold">{maskedPhone}</p>
           </div>
         </div>
@@ -353,7 +359,7 @@ export function PhoneOtpVerification({
             }
             onClick={() => handleVerify()}
           >
-            {verifying ? "Verifying…" : "Verify OTP"}
+            {verifying ? "Verifying…" : submitButtonText}
           </Button>
 
           {/* Resend row */}

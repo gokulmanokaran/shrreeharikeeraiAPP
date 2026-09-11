@@ -123,6 +123,49 @@ function localDevApiPlugin(): Plugin {
           return;
         }
 
+        // POST /api/phone-login (Local dev support)
+        if (url.startsWith("/api/phone-login") && (req.method === "POST" || req.method === "OPTIONS")) {
+          if (req.method === "OPTIONS") {
+            res.statusCode = 200;
+            res.end();
+            return;
+          }
+          let rawBody = "";
+          req.on("data", (chunk: any) => {
+            rawBody += chunk;
+          });
+          req.on("end", async () => {
+            try {
+              const phoneLoginUrl = pathToFileURL(path.resolve(__dirname, "api/phone-login.ts")).href;
+              const { default: handler } = await import(phoneLoginUrl);
+              const fakeReq = {
+                method: "POST",
+                body: rawBody ? JSON.parse(rawBody) : {},
+              } as any;
+              const fakeRes = {
+                statusCode: 200,
+                setHeader: (k: string, v: string) => res.setHeader(k, v),
+                status: function (code: number) {
+                  this.statusCode = code;
+                  res.statusCode = code;
+                  return this;
+                },
+                json: function (payload: any) {
+                  res.setHeader("Content-Type", "application/json");
+                  res.statusCode = this.statusCode || 200;
+                  res.end(JSON.stringify(payload));
+                },
+              } as any;
+              await handler(fakeReq, fakeRes);
+            } catch (err: any) {
+              res.setHeader("Content-Type", "application/json");
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: err?.message || "Internal server error" }));
+            }
+          });
+          return;
+        }
+
         // GET /api/products
         if (url.startsWith("/api/products") && req.method === "GET") {
           const catalog = readCatalog();
