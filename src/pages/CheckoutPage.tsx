@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   ChevronRight,
@@ -13,6 +13,8 @@ import {
   Pencil,
   Home,
   Landmark,
+  CheckCircle2,
+  ShieldCheck,
 } from "lucide-react";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -29,6 +31,8 @@ import {
 } from "../utils/validation";
 import { DEFAULT_MINIMUM_ORDER, isValidPincode } from "../data/deliveryZones";
 import { useAuth } from "../store/AuthContext";
+import { PhoneOtpVerification } from "../components/features/PhoneOtpVerification";
+import { isValidIndianPhone } from "../services/phoneOtpService";
 
 const sectionVariants = {
   hidden: { opacity: 0, y: 16 },
@@ -130,6 +134,12 @@ export default function CheckoutPage() {
   const [placing, setPlacing] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [showAddressEdit, setShowAddressEdit] = useState(false);
+
+  // ── Phone OTP verification state ──────────────────────────────────────────
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [showOtpPanel, setShowOtpPanel] = useState(false);
+  // Track which number was verified so we reset if user changes it
+  const verifiedPhoneRef = useRef<string>("");
 
   const isNavigatingRef = useRef(false);
 
@@ -336,13 +346,89 @@ export default function CheckoutPage() {
                 onChange={(v) => { setFullName(v); setErrors((e) => ({ ...e, fullName: undefined })); }}
                 error={errors.fullName} placeholder="e.g. Raj Kumar" autoComplete="name"
               />
-              <InputField
-                id="checkout-mobile" label="Mobile Number" icon={<Phone size={13} />}
-                type="tel" inputMode="tel" maxLength={10}
-                value={mobile}
-                onChange={(v) => { setMobile(v.replace(/\D/g, "")); setErrors((e) => ({ ...e, mobile: undefined })); }}
-                error={errors.mobile} placeholder="10-digit Indian mobile number" autoComplete="tel"
-              />
+              {/* Mobile Number field with inline OTP verification */}
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="checkout-mobile" className="text-xs font-bold text-[#555555] flex items-center gap-1.5">
+                  <span className="text-[#00A651]"><Phone size={13} /></span>
+                  Mobile Number
+                  {phoneVerified && (
+                    <span className="ml-auto flex items-center gap-1 text-[10px] font-bold text-[#087A43] bg-[#EAF8F0] px-2 py-0.5 rounded-full border border-[#B9E8CE]">
+                      <CheckCircle2 size={11} />
+                      Verified
+                    </span>
+                  )}
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="checkout-mobile"
+                    type="tel"
+                    inputMode="tel"
+                    maxLength={10}
+                    value={mobile}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\D/g, "");
+                      setMobile(v);
+                      setErrors((err) => ({ ...err, mobile: undefined }));
+                      // Reset verification if number changes
+                      if (v !== verifiedPhoneRef.current) {
+                        setPhoneVerified(false);
+                        setShowOtpPanel(false);
+                      }
+                    }}
+                    placeholder="10-digit Indian mobile number"
+                    autoComplete="tel"
+                    className={`flex-1 h-12 px-4 border-2 rounded-[12px] text-sm font-medium focus:outline-none transition-colors ${
+                      errors.mobile
+                        ? "border-[#EA4335] bg-red-50/50 focus:border-[#EA4335]"
+                        : phoneVerified
+                        ? "border-[#00A651] bg-[#EAF8F0]/40 focus:border-[#00A651]"
+                        : "border-[#EAEAEA] focus:border-[#00A651]"
+                    }`}
+                  />
+                  {!phoneVerified && (
+                    <button
+                      type="button"
+                      disabled={!isValidIndianPhone(mobile) || showOtpPanel}
+                      onClick={() => {
+                        setErrors((err) => ({ ...err, mobile: undefined }));
+                        setShowOtpPanel(true);
+                      }}
+                      className="h-12 px-3.5 text-xs font-black rounded-[12px] border-2 border-[#00A651] text-[#00A651] bg-white hover:bg-[#EAF8F0] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center gap-1.5 flex-shrink-0"
+                      aria-label="Send OTP to verify mobile number"
+                    >
+                      <ShieldCheck size={14} />
+                      {showOtpPanel ? "Sending…" : "Verify"}
+                    </button>
+                  )}
+                  {phoneVerified && (
+                    <div className="h-12 px-3.5 flex items-center gap-1.5 text-[#00A651] text-xs font-black flex-shrink-0">
+                      <CheckCircle2 size={16} />
+                    </div>
+                  )}
+                </div>
+                {errors.mobile && (
+                  <motion.p role="alert" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+                    className="text-[#EA4335] text-xs font-semibold px-1">
+                    {errors.mobile}
+                  </motion.p>
+                )}
+
+                {/* Inline OTP panel */}
+                <AnimatePresence>
+                  {showOtpPanel && !phoneVerified && (
+                    <PhoneOtpVerification
+                      key={mobile}
+                      phone={mobile}
+                      onSuccess={(verifiedPhone) => {
+                        verifiedPhoneRef.current = verifiedPhone;
+                        setPhoneVerified(true);
+                        setShowOtpPanel(false);
+                      }}
+                      onCancel={() => setShowOtpPanel(false)}
+                    />
+                  )}
+                </AnimatePresence>
+              </div>
               <InputField
                 id="checkout-alt-mobile" label="Alternative Mobile Number" icon={<Phone size={13} />}
                 type="tel" inputMode="tel" maxLength={10} optional
