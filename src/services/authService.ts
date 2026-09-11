@@ -107,7 +107,7 @@ export async function signInWithGoogle(
   const targetRedirect =
     redirectTo ||
     (typeof window !== "undefined"
-      ? `${window.location.origin}/login`
+      ? `${window.location.origin}/auth/callback`
       : undefined);
 
   try {

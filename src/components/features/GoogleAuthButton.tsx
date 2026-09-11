@@ -46,10 +46,10 @@ export function GoogleAuthButton({
       sessionStorage.setItem("shreehari_auth_redirect", targetPath);
     }
 
-    // Redirect to the application root or login page after Google OAuth
+    // Redirect to the dedicated OAuth callback route
     const redirectUrl =
       typeof window !== "undefined"
-        ? `${window.location.origin}/login`
+        ? `${window.location.origin}/auth/callback`
         : undefined;
 
     const res = await signInWithGoogle(redirectUrl);

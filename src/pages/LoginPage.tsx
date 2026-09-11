@@ -25,8 +25,14 @@ export default function LoginPage() {
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
   const [loading, setLoading] = useState(false);
 
-  // Check URL params / hash for OAuth error or cancellation on return from Google
+  // Check location state, URL params, or hash for OAuth error or cancellation
   useEffect(() => {
+    const stateErr = (location.state as { error?: string } | null)?.error;
+    if (stateErr) {
+      setErrors({ form: stateErr });
+      return;
+    }
+
     const searchParams = new URLSearchParams(location.search);
     const hashStr = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
     const hashParams = new URLSearchParams(hashStr);
@@ -44,7 +50,7 @@ export default function LoginPage() {
       }
       window.history.replaceState({}, document.title, location.pathname);
     }
-  }, [location.search, location.hash, location.pathname]);
+  }, [location.search, location.hash, location.pathname, location.state]);
 
   // If already authenticated or just returned from Google OAuth, proceed to target
   useEffect(() => {

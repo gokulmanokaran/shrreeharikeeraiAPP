@@ -32,8 +32,14 @@ export default function SignupPage() {
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [loading, setLoading] = useState(false);
 
-  // Check URL params / hash for OAuth error or cancellation on return from Google
+  // Check URL params / hash or location.state for OAuth error or cancellation on return from Google
   useEffect(() => {
+    const stateErr = (location.state as { error?: string } | null)?.error;
+    if (stateErr) {
+      setErrors({ form: stateErr });
+      return;
+    }
+
     const searchParams = new URLSearchParams(location.search);
     const hashStr = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
     const hashParams = new URLSearchParams(hashStr);
@@ -51,7 +57,7 @@ export default function SignupPage() {
       }
       window.history.replaceState({}, document.title, location.pathname);
     }
-  }, [location.search, location.hash, location.pathname]);
+  }, [location.search, location.hash, location.pathname, location.state]);
 
   // If already authenticated or just returned from Google OAuth, proceed to target
   useEffect(() => {

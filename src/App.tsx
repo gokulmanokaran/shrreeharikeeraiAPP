@@ -29,6 +29,7 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const EditProfilePage = lazy(() => import("./pages/EditProfilePage"));
 const OrdersPage = lazy(() => import("./pages/OrdersPage"));
 const AccountSettingsPage = lazy(() => import("./pages/AccountSettingsPage"));
+const AuthCallbackPage = lazy(() => import("./pages/AuthCallbackPage"));
 
 import { TopSnackbar } from "./components/ui/TopSnackbar";
 import { FloatingCartButton } from "./components/features/FloatingCartButton";
@@ -120,6 +121,10 @@ export default function App() {
             <Routes location={location}>
               {/* Redirect legacy /pincode to Home */}
               <Route path="/pincode" element={<Navigate to="/" replace />} />
+
+              {/* OAuth Callback Routes */}
+              <Route path="/auth/callback" element={<AuthCallbackPage />} />
+              <Route path="/callback" element={<AuthCallbackPage />} />
 
               <Route
                 path="/login"
