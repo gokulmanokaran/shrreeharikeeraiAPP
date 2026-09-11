@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="shreeGreenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00A651" />
+      <stop offset="50%" stop-color="#087A43" />
+      <stop offset="100%" stop-color="#044D29" />
+    </linearGradient>
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.2" />
+    </filter>
+  </defs>
+
+  <!-- Background with rounded corners for adaptive/maskable icons -->
+  <rect width="512" height="512" rx="115" fill="url(#shreeGreenGrad)" />
+  
+  <!-- Subtle accent circle -->
+  <circle cx="256" cy="256" r="195" fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="4" />
+
+  <!-- Botanical Leaf Art Group with Soft Shadow -->
+  <g filter="url(#softGlow)" fill="#FFFFFF">
+    <!-- Main Leaf -->
+    <path d="M 256 100 C 350 140 375 255 330 340 C 295 405 256 425 256 425 C 256 425 217 405 182 340 C 137 255 162 140 256 100 Z" fill="#FFFFFF" />
+    
+    <!-- Central Leaf Stem & Veins -->
+    <path d="M 256 130 C 256 240 256 360 256 415" stroke="#087A43" stroke-width="8" stroke-linecap="round" fill="none" />
+    <path d="M 256 220 Q 290 200 315 210" stroke="#087A43" stroke-width="6" stroke-linecap="round" fill="none" />
+    <path d="M 256 270 Q 215 250 195 260" stroke="#087A43" stroke-width="6" stroke-linecap="round" fill="none" />
+    <path d="M 256 320 Q 295 305 315 318" stroke="#087A43" stroke-width="6" stroke-linecap="round" fill="none" />
+  </g>
+  
+  <!-- Modern clean branding text -->
+  <text x="256" y="470" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="900" fill="#FFFFFF" letter-spacing="4">SHREE HARI</text>
+</svg>

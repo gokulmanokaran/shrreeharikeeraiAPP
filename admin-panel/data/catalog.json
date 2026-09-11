@@ -1,0 +1,2103 @@
+{
+  "products": [
+    {
+      "id": "prod_mtkupkpw",
+      "name": "Nuts & Seeds  Laddu",
+      "nameTamil": "சத்து மாவு லட்டு",
+      "tamilName": "சத்து மாவு லட்டு",
+      "price": 149,
+      "mrp": 149,
+      "unit": "100g Box",
+      "quantity": "250g",
+      "category": "healthy-snacks",
+      "secondaryCategory": "new-arrivals",
+      "image": "https://res.cloudinary.com/kil3rfap/image/upload/f_auto,q_auto/ChatGPT_Image_Sep_3_2026_07_17_58_AM",
+      "description": "Wholesome goodness in every bite. Our Nuts & Seeds Laddu is a delicious, naturally satisfying sweet made with a nourishing blend of premium nuts and nutrient-rich seeds. Packed with the goodness of almonds, cashews, sesame, sunflower seeds, pumpkin seeds, and other wholesome ingredients, each laddu offers a delightful combination of crunch, richness, and natural sweetness.",
+      "shortDescription": "",
+      "note": "",
+      "inStock": true,
+      "stockQuantity": 25,
+      "featured": false,
+      "active": true,
+      "sortOrder": 0,
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "prod_mtkupkpw_1788400752322",
+          "unit": "100g",
+          "price": 149,
+          "inStock": true
+        },
+        {
+          "id": "prod_mtkupkpw_1788400821250",
+          "unit": "250g",
+          "price": 369,
+          "inStock": true
+        }
+      ]
+    },
+    {
+      "id": "ponnangani-keerai",
+      "name": "Ponnangani Keerai",
+      "nameTamil": "பொன்னாங்கண்ணி கீரை",
+      "price": 49,
+      "unit": "250g Cleaned Pack",
+      "category": "keerai",
+      "description": "Fresh cleaned Ponnangani Keerai (Sessile Joyweed). Rich in iron and vitamins. Ready to cook straight from the pack.",
+      "image": "/product-images/ponnangani-keerai.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "palak-leaves",
+      "name": "Palak Leaves",
+      "nameTamil": "பாலக்கீரை",
+      "price": 53,
+      "unit": "250g Cleaned Pack",
+      "category": "keerai",
+      "description": "Freshly cleaned Palak (Spinach) leaves. Naturally rich in iron, calcium and vitamins. Ready to cook.",
+      "image": "/product-images/palak-leaves.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "araikeerai",
+      "name": "Araikeerai",
+      "nameTamil": "அரைக்கீரை",
+      "price": 47,
+      "unit": "250g Cleaned Pack",
+      "category": "keerai",
+      "description": "Tender Araikeerai (Amaranthus dubius) leaves, carefully cleaned and packed fresh. Great for kootu and poriyal.",
+      "image": "/product-images/araikeerai.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "thandukeerai",
+      "name": "Thandukeerai",
+      "nameTamil": "தண்டுக்கீரை",
+      "price": 45,
+      "unit": "250g Cleaned Pack",
+      "category": "keerai",
+      "description": "Crisp and fresh Thandukeerai (Red/Green Amaranth stems & leaves). Packed with dietary fiber and essential minerals.",
+      "image": "/product-images/thandukeerai.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "sirukeerai",
+      "name": "Sirukeerai",
+      "nameTamil": "சிறுகீரை",
+      "price": 46,
+      "unit": "250g Cleaned Pack",
+      "category": "keerai",
+      "description": "Delicate Sirukeerai (Tropical Amaranth) leaves. Highly digestible, rich in micronutrients and perfect for daily diet.",
+      "image": "/product-images/sirukeerai.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "murungaikeerai",
+      "name": "Murungai Keerai",
+      "nameTamil": "முருங்கைக்கீரை",
+      "price": 48,
+      "unit": "250g Cleaned Pack",
+      "category": "keerai",
+      "description": "Freshly plucked and cleaned Drumstick (Moringa) leaves. A superfood powerhouse loaded with antioxidants and iron.",
+      "image": "/product-images/murungaikeerai.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "manathakkaali-keerai",
+      "name": "Manathakkaali Keerai",
+      "nameTamil": "மணத்தக்காளி கீரை",
+      "price": 49,
+      "unit": "250g Cleaned Pack",
+      "category": "keerai",
+      "description": "Traditional Black Nightshade greens, known for soothing stomach ulcers and cooling the body. Pre-cleaned and ready.",
+      "image": "/product-images/manathakkaali-keerai.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "venthayakeerai",
+      "name": "Venthaya Keerai",
+      "nameTamil": "வெந்தயக்கீரை",
+      "price": 52,
+      "unit": "250g Cleaned Pack",
+      "category": "keerai",
+      "description": "Fresh Fenugreek (Methi) greens with a subtle, aromatic bitterness. Great for parathas, sambar and healthy stir-fries.",
+      "image": "/product-images/venthayakeerai.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "senkeerai",
+      "name": "Senkeerai",
+      "nameTamil": "செங்கீரை",
+      "price": 46,
+      "unit": "250g Cleaned Pack",
+      "category": "keerai",
+      "description": "Vibrant Red Amaranth leaves, naturally rich in anthocyanins, iron and potassium. Brings color and health to your plate.",
+      "image": "/product-images/senkeerai.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "paruppukeerai",
+      "name": "Paruppu Keerai",
+      "nameTamil": "பருப்புக்கீரை",
+      "price": 47,
+      "unit": "250g Cleaned Pack",
+      "category": "keerai",
+      "description": "Juicy Purslane greens rich in Omega-3 fatty acids and minerals. Pre-cleaned and washed for effortless cooking.",
+      "image": "/product-images/paruppukeerai.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "coriander-leaves",
+      "name": "Coriander Leaves",
+      "nameTamil": "கொத்தமல்லி தழை",
+      "price": 35,
+      "unit": "100g Cleaned Pack",
+      "category": "keerai",
+      "description": "Aromatic, farm-fresh coriander leaves, trimmed and washed. Essential garnish for curries, rasam and chutneys.",
+      "image": "/product-images/coriander-leaves.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "puthina",
+      "name": "Puthina (Mint)",
+      "nameTamil": "புதினா",
+      "price": 35,
+      "unit": "100g Cleaned Pack",
+      "category": "keerai",
+      "description": "Fragrant fresh mint leaves, carefully sorted and cleaned. Perfect for refreshing teas, chutneys, biryani and juices.",
+      "image": "/product-images/puthina.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "karuveppillai",
+      "name": "Curry Leaves",
+      "nameTamil": "கருவேப்பிலை",
+      "price": 32,
+      "unit": "100g Cleaned Pack",
+      "category": "keerai",
+      "description": "Hand-picked, highly aromatic curry leaves. Adds unmistakable South Indian flavor and promotes healthy hair and digestion.",
+      "image": "/product-images/karuveppillai.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "spinach",
+      "name": "English Spinach",
+      "nameTamil": "ஸ்பினாக் கீரை",
+      "price": 55,
+      "unit": "250g Cleaned Pack",
+      "category": "keerai",
+      "description": "Crisp, broad-leaf English spinach, thoroughly cleaned and sorted. Ideal for soups, salads, smoothies and pastas.",
+      "image": "/product-images/Spinach.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "radish-purple-sango-microgreens",
+      "name": "Radish Purple Sango Microgreens",
+      "nameTamil": "ஊதா முள்ளங்கி மைக்ரோகிரீன்ஸ்",
+      "price": 69,
+      "unit": "40g Pack",
+      "category": "microgreens",
+      "description": "Stunning violet-hued radish microgreens with a bold, peppery crunch. High in Vitamin C, E and anthocyanins.",
+      "image": "/product-images/radish-purple-sango-microgreens.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "radish-china-rose-microgreens",
+      "name": "Radish China Rose Microgreens",
+      "nameTamil": "சைனா ரோஸ் முள்ளங்கி மைக்ரோகிரீன்ஸ்",
+      "price": 69,
+      "unit": "40g Pack",
+      "category": "microgreens",
+      "description": "Delicate pink-stemmed microgreens with a refreshing spicy zing. Ideal for garnishing sandwiches, wraps and rolls.",
+      "image": "/product-images/radish-china-rose-microgreens.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "radish-white-microgreens",
+      "name": "Radish White Microgreens",
+      "nameTamil": "வெள்ளை முள்ளங்கி மைக்ரோகிரீன்ஸ்",
+      "price": 65,
+      "unit": "40g Pack",
+      "category": "microgreens",
+      "description": "Zesty white radish sprouts packed with digestive enzymes and vibrant crunch. Perfect raw food addition.",
+      "image": "/product-images/radish-white-microgreens.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "broccoli-microgreens",
+      "name": "Broccoli Microgreens",
+      "nameTamil": "ப்ரோக்கோலி மைக்ரோகிரீன்ஸ்",
+      "price": 89,
+      "unit": "40g Pack",
+      "category": "microgreens",
+      "description": "Super potent microgreens rich in Sulforaphane — a renowned natural antioxidant. Mild, pleasant flavor.",
+      "image": "/product-images/broccoli-microgreens.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "sunflower-microgreens",
+      "name": "Sunflower Microgreens",
+      "nameTamil": "சூரியகாந்தி மைக்ரோகிரீன்ஸ்",
+      "price": 69,
+      "unit": "40g Pack",
+      "category": "microgreens",
+      "description": "Nutty, juicy and delightfully crunchy sunflower shoots. High in complete plant protein and zinc.",
+      "image": "/product-images/sunflower-microgreens.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "alfalfa-microgreens",
+      "name": "Alfalfa Microgreens",
+      "nameTamil": "குதிரை மசால் மைக்ரோகிரீன்ஸ்",
+      "price": 65,
+      "unit": "40g Pack",
+      "category": "microgreens",
+      "description": "Feathery, mild alfalfa greens celebrated worldwide for vital vitamins, minerals and digestive wellness.",
+      "image": "/product-images/alfalfa-microgreens.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "spinach-microgreens",
+      "name": "Spinach Microgreens",
+      "nameTamil": "ஸ்பினாக் மைக்ரோகிரீன்ஸ்",
+      "price": 69,
+      "unit": "40g Pack",
+      "category": "microgreens",
+      "description": "Tender baby spinach leaves with a sweet, delicate flavor profile. Concentrated source of iron and folate.",
+      "image": "/product-images/spinach-microgreens.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "pak-choi-microgreens",
+      "name": "Pak Choi Microgreens",
+      "nameTamil": "பாக் சோய் மைக்ரோகிரீன்ஸ்",
+      "price": 69,
+      "unit": "40g Pack",
+      "category": "microgreens",
+      "description": "Crispy Asian green micro-shoots with a mild cabbage taste. Excellent in salads, noodles and stir fry bowls.",
+      "image": "/product-images/pak-choi-microgreens.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "khol-rabi-microgreens",
+      "name": "Kohlrabi Microgreens",
+      "nameTamil": "நூல்கோல் மைக்ரோகிரீன்ஸ்",
+      "price": 69,
+      "unit": "40g Pack",
+      "category": "microgreens",
+      "description": "Purple-tinted, mild sweet microgreens rich in vitamin C and fiber. Adds gourmet flair to home cooking.",
+      "image": "/product-images/khol-rabi-microgreens.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "mustard-microgreens",
+      "name": "Mustard Microgreens",
+      "nameTamil": "கடுகு மைக்ரோகிரீன்ஸ்",
+      "price": 59,
+      "unit": "40g Pack",
+      "category": "microgreens",
+      "description": "Spicy and pungent mustard sprouts that elevate sandwiches, wraps, rasam and salad dressings.",
+      "image": "/product-images/mustard-microgreens.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "methi-microgreens",
+      "name": "Methi Microgreens",
+      "nameTamil": "வெந்தய மைக்ரோகிரீன்ஸ்",
+      "price": 59,
+      "unit": "40g Pack",
+      "category": "microgreens",
+      "description": "Nutritious young fenugreek shoots that support blood sugar balance and digestion.",
+      "image": "/product-images/methi-microgreens.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "amaranthus-pink-microgreens",
+      "name": "Amaranthus Pink Microgreens",
+      "nameTamil": "சிவப்பு கீரை மைக்ரோகிரீன்ஸ்",
+      "price": 69,
+      "unit": "40g Pack",
+      "category": "microgreens",
+      "description": "Eye-catching vibrant fuchsia microgreens packed with betalains and calcium. Gorgeous on gourmet dishes.",
+      "image": "/product-images/amaranthus-pink-microgreens.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "onion-peeled",
+      "name": "Small Onion (Shallots) Peeled",
+      "nameTamil": "சின்ன வெங்காயம் (தோல் உரித்தது)",
+      "price": 49,
+      "unit": "250g",
+      "category": "vegetables",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "onion-peeled-250g",
+          "unit": "250g",
+          "price": 49
+        },
+        {
+          "id": "onion-peeled-500g",
+          "unit": "500g",
+          "price": 95
+        }
+      ],
+      "description": "Premium small onions (shallots), hygienically peeled. Saves 30 mins of prep time. Perfect for sambar & vathakuzhambu.",
+      "image": "/product-images/Onion (Peeled).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "garlic-peeled",
+      "name": "Garlic Peeled",
+      "nameTamil": "பூண்டு (தோல் உரித்தது)",
+      "price": 59,
+      "unit": "250g",
+      "category": "vegetables",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "garlic-peeled-250g",
+          "unit": "250g",
+          "price": 59
+        },
+        {
+          "id": "garlic-peeled-500g",
+          "unit": "500g",
+          "price": 115
+        }
+      ],
+      "description": "Plump, aromatic garlic cloves, fully peeled and cleaned. Ready to drop into your gravies, rasam and tempering.",
+      "image": "/product-images/Garlic (Peeled).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "beans-sliced",
+      "name": "Beans (Sliced / Chopped)",
+      "nameTamil": "பீன்ஸ் (நறுக்கியது)",
+      "price": 45,
+      "unit": "250g",
+      "category": "vegetables",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "beans-sliced-250g",
+          "unit": "250g",
+          "price": 45
+        },
+        {
+          "id": "beans-sliced-500g",
+          "unit": "500g",
+          "price": 88
+        }
+      ],
+      "description": "Fresh green beans, stringed and finely chopped. Ready for poriyal, fried rice, kurma and pulao.",
+      "image": "/product-images/Beans (Sliced).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "carrot-sliced",
+      "name": "Carrot (Diced / Sliced)",
+      "nameTamil": "கேரட் (நறுக்கியது)",
+      "price": 39,
+      "unit": "250g",
+      "category": "vegetables",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "carrot-sliced-250g",
+          "unit": "250g",
+          "price": 39
+        },
+        {
+          "id": "carrot-sliced-500g",
+          "unit": "500g",
+          "price": 75
+        }
+      ],
+      "description": "Sweet, crunchy carrots, washed, peeled and evenly diced. Perfect for stir-fries, soups and salads.",
+      "image": "/product-images/Carrot (Sliced).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "beetroot-sliced",
+      "name": "Beetroot (Diced / Chopped)",
+      "nameTamil": "பீட்ரூட் (நறுக்கியது)",
+      "price": 35,
+      "unit": "250g",
+      "category": "vegetables",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "beetroot-sliced-250g",
+          "unit": "250g",
+          "price": 35
+        },
+        {
+          "id": "beetroot-sliced-500g",
+          "unit": "500g",
+          "price": 68
+        }
+      ],
+      "description": "Farm-fresh beetroots, peeled and neatly diced. Loaded with dietary nitrates and antioxidants.",
+      "image": "/product-images/Beetroot (Sliced).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "avaraikkai-sliced",
+      "name": "Avaraikkai (Broad Beans Sliced)",
+      "nameTamil": "அவரைக்காய் (நறுக்கியது)",
+      "price": 42,
+      "unit": "250g",
+      "category": "vegetables",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "avaraikkai-sliced-250g",
+          "unit": "250g",
+          "price": 42
+        },
+        {
+          "id": "avaraikkai-sliced-500g",
+          "unit": "500g",
+          "price": 82
+        }
+      ],
+      "description": "Tender Broad Beans, stringed and sliced. Ideal for classic South Indian avaraikkai poriyal and kootu.",
+      "image": "/product-images/Avaraikkai (Sliced).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "cabbage-sliced",
+      "name": "Cabbage (Shredded / Sliced)",
+      "nameTamil": "முட்டைகோஸ் (நறுக்கியது)",
+      "price": 32,
+      "unit": "250g",
+      "category": "vegetables",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "cabbage-sliced-250g",
+          "unit": "250g",
+          "price": 32
+        },
+        {
+          "id": "cabbage-sliced-500g",
+          "unit": "500g",
+          "price": 60
+        }
+      ],
+      "description": "Crisp white cabbage finely shredded. Ready for quick poriyal, coleslaw, noodles and momos.",
+      "image": "/product-images/Cabbage (Sliced).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "cauliflower-sliced",
+      "name": "Cauliflower (Florets Cut)",
+      "nameTamil": "காலிஃபிளவர் (நறுக்கியது)",
+      "price": 49,
+      "unit": "250g",
+      "category": "vegetables",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "cauliflower-sliced-250g",
+          "unit": "250g",
+          "price": 49
+        },
+        {
+          "id": "cauliflower-sliced-500g",
+          "unit": "500g",
+          "price": 95
+        }
+      ],
+      "description": "Clean, fresh cauliflower cut into uniform bite-sized florets. Ready to cook Gobi curries and roasts.",
+      "image": "/product-images/Cauliflower (Sliced).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "drumstick-sliced",
+      "name": "Drumstick (Cut Pieces)",
+      "nameTamil": "முருங்கைக்காய் (நறுக்கியது)",
+      "price": 39,
+      "unit": "250g",
+      "category": "vegetables",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "drumstick-sliced-250g",
+          "unit": "250g",
+          "price": 39
+        },
+        {
+          "id": "drumstick-sliced-500g",
+          "unit": "500g",
+          "price": 75
+        }
+      ],
+      "description": "Tender drumsticks cut into 2-inch pieces. Perfect addition to sambar, aviyal and spicy gravies.",
+      "image": "/product-images/Drumstick (Sliced).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "coconut-grated",
+      "name": "Coconut (Freshly Grated)",
+      "nameTamil": "தேங்காய் துருவல்",
+      "price": 45,
+      "unit": "250g",
+      "category": "vegetables",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "coconut-grated-250g",
+          "unit": "250g",
+          "price": 45
+        },
+        {
+          "id": "coconut-grated-500g",
+          "unit": "500g",
+          "price": 88
+        }
+      ],
+      "description": "Freshly grated coconut from ripe coconuts. Ready for chutneys, gravies, poriyal toppings and sweets.",
+      "image": "/product-images/Coconut (Grated).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "green-peas-peeled",
+      "name": "Green Peas (Peeled / Shelled)",
+      "nameTamil": "பச்சை பட்டாணி (உரித்தது)",
+      "price": 55,
+      "unit": "250g",
+      "category": "vegetables",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "green-peas-peeled-250g",
+          "unit": "250g",
+          "price": 55
+        },
+        {
+          "id": "green-peas-peeled-500g",
+          "unit": "500g",
+          "price": 105
+        }
+      ],
+      "description": "Sweet and tender fresh green peas, hand-shelled. Ideal for kurma, matarr paneer, pulao and cutlets.",
+      "image": "/product-images/Green Peas (Peeled).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "sweet-corn-peeled",
+      "name": "Sweet Corn (Kernels)",
+      "nameTamil": "இனிப்பு சோளம்",
+      "price": 49,
+      "unit": "250g",
+      "category": "vegetables",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "sweet-corn-peeled-250g",
+          "unit": "250g",
+          "price": 49
+        },
+        {
+          "id": "sweet-corn-peeled-500g",
+          "unit": "500g",
+          "price": 95
+        }
+      ],
+      "description": "Juicy golden sweet corn kernels, separated and packed fresh. Boil or steam for healthy snacks, soups & salads.",
+      "image": "/product-images/Sweet Corn (Peeled).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "pomegranate-peeled",
+      "name": "Pomegranate (Arils Peeled)",
+      "nameTamil": "மாதுளை (உரித்த முத்துக்கள்)",
+      "price": 79,
+      "unit": "250g",
+      "category": "cut-fruits",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "pomegranate-peeled-250g",
+          "unit": "250g",
+          "price": 79
+        },
+        {
+          "id": "pomegranate-peeled-500g",
+          "unit": "500g",
+          "price": 149
+        }
+      ],
+      "description": "Ruby-red, juicy pomegranate pearls, neatly extracted. Zero mess, ready to eat or top your curd rice.",
+      "image": "/product-images/Pomegranate (Peeled).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "papaya-cut",
+      "name": "Papaya (Cubed / Cut)",
+      "nameTamil": "பப்பாளி (நறுக்கியது)",
+      "price": 39,
+      "unit": "250g",
+      "category": "cut-fruits",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "papaya-cut-250g",
+          "unit": "250g",
+          "price": 39
+        },
+        {
+          "id": "papaya-cut-500g",
+          "unit": "500g",
+          "price": 75
+        }
+      ],
+      "description": "Naturally ripened sweet papaya cubes. Rich in digestive enzyme papain, Vitamin A and fiber.",
+      "image": "/product-images/Papaya (Cut).webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "fruits-mix-salad",
+      "name": "Fruits Mix Salad",
+      "nameTamil": "கலவை பழ சாலட்",
+      "price": 69,
+      "unit": "250g",
+      "category": "cut-fruits",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "fruits-mix-salad-250g",
+          "unit": "250g",
+          "price": 69
+        },
+        {
+          "id": "fruits-mix-salad-500g",
+          "unit": "500g",
+          "price": 129
+        }
+      ],
+      "description": "A colorful, delicious mix of seasonal fresh fruits, chopped and ready to enjoy. Guilt-free daily nutrition.",
+      "image": "/product-images/Fruits Mix Salad.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "pachai-payaru-sprouts",
+      "name": "Pachai Payaru (Green Gram Sprouts)",
+      "nameTamil": "பச்சை பயறு முளைகட்டியது",
+      "price": 39,
+      "unit": "250g",
+      "category": "sprouts",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "pachai-payaru-sprouts-250g",
+          "unit": "250g",
+          "price": 39
+        },
+        {
+          "id": "pachai-payaru-sprouts-500g",
+          "unit": "500g",
+          "price": 75
+        }
+      ],
+      "description": "Freshly sprouted green moong dal. Packed with living enzymes, Vitamin C and plant protein. Eat raw or lightly steamed.",
+      "image": "/product-images/Pachai Payaru.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "brown-chana-sprouts",
+      "name": "Brown Chana (Kala Chana Sprouts)",
+      "nameTamil": "கொண்டைக்கடலை முளைகட்டியது",
+      "price": 42,
+      "unit": "250g",
+      "category": "sprouts",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "brown-chana-sprouts-250g",
+          "unit": "250g",
+          "price": 42
+        },
+        {
+          "id": "brown-chana-sprouts-500g",
+          "unit": "500g",
+          "price": 79
+        }
+      ],
+      "description": "Sprouted black chickpeas, high in iron, complex carbs and dietary fiber. Ideal for healthy evening sundal.",
+      "image": "/product-images/Brown Chana.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "mixed-sprouts",
+      "name": "Mixed Sprouts Combination",
+      "nameTamil": "கலவை முளைகட்டிய பயறுகள்",
+      "price": 45,
+      "unit": "250g",
+      "category": "sprouts",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "mixed-sprouts-250g",
+          "unit": "250g",
+          "price": 45
+        },
+        {
+          "id": "mixed-sprouts-500g",
+          "unit": "500g",
+          "price": 85
+        }
+      ],
+      "description": "A nutritious medley of sprouted green gram, brown chana, cowpeas and fenugreek. Maximum vitality in every spoon.",
+      "image": "/product-images/Mixed Sprouts.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "abc-juice",
+      "name": "ABC Juice (Apple, Beetroot, Carrot)",
+      "nameTamil": "ABC ஜூஸ்",
+      "price": 59,
+      "unit": "250ml",
+      "category": "fresh-juices",
+      "variantType": "sugar",
+      "variants": [
+        {
+          "id": "abc-juice-no-sugar",
+          "unit": "Without Sugar",
+          "price": 59
+        },
+        {
+          "id": "abc-juice-with-sugar",
+          "unit": "With Sugar",
+          "price": 59
+        }
+      ],
+      "description": "The miracle detox elixir! Freshly cold-pressed Apple, Beetroot and Carrot. Glowing skin and immunity booster.",
+      "image": "/product-images/ABC juice.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "pomegranate-juice",
+      "name": "Pomegranate Juice",
+      "nameTamil": "மாதுளை ஜூஸ்",
+      "price": 69,
+      "unit": "250ml",
+      "category": "fresh-juices",
+      "variantType": "sugar",
+      "variants": [
+        {
+          "id": "pomegranate-juice-no-sugar",
+          "unit": "Without Sugar",
+          "price": 69
+        },
+        {
+          "id": "pomegranate-juice-with-sugar",
+          "unit": "With Sugar",
+          "price": 69
+        }
+      ],
+      "description": "100% pure fresh pomegranate juice. Rich in punicalagins, heart-friendly and deeply hydrating.",
+      "image": "/product-images/Pomegranate Juice.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "amla-juice",
+      "name": "Amla (Gooseberry) Juice",
+      "nameTamil": "நெல்லிக்காய் ஜூஸ்",
+      "price": 39,
+      "unit": "250ml",
+      "category": "fresh-juices",
+      "variantType": "sugar",
+      "variants": [
+        {
+          "id": "amla-juice-no-sugar",
+          "unit": "Without Sugar",
+          "price": 39
+        },
+        {
+          "id": "amla-juice-with-sugar",
+          "unit": "With Sugar",
+          "price": 39
+        }
+      ],
+      "description": "Immunity powerhouse Indian Gooseberry juice. Concentrated natural Vitamin C for radiant health.",
+      "image": "/product-images/Amla Juice.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "beetroot-juice",
+      "name": "Beetroot Juice",
+      "nameTamil": "பீட்ரூட் ஜூஸ்",
+      "price": 45,
+      "unit": "250ml",
+      "category": "fresh-juices",
+      "variantType": "sugar",
+      "variants": [
+        {
+          "id": "beetroot-juice-no-sugar",
+          "unit": "Without Sugar",
+          "price": 45
+        },
+        {
+          "id": "beetroot-juice-with-sugar",
+          "unit": "With Sugar",
+          "price": 45
+        }
+      ],
+      "description": "Fresh vibrant beetroot juice. Promotes healthy stamina, blood flow and liver detoxification.",
+      "image": "/product-images/Beetroot Juice.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "carrot-juice",
+      "name": "Carrot Juice",
+      "nameTamil": "கேரட் ஜூஸ்",
+      "price": 45,
+      "unit": "250ml",
+      "category": "fresh-juices",
+      "variantType": "sugar",
+      "variants": [
+        {
+          "id": "carrot-juice-no-sugar",
+          "unit": "Without Sugar",
+          "price": 45
+        },
+        {
+          "id": "carrot-juice-with-sugar",
+          "unit": "With Sugar",
+          "price": 45
+        }
+      ],
+      "description": "Sweet fresh carrot juice loaded with beta-carotene, Vitamin A and essential antioxidants.",
+      "image": "/product-images/Carrot Juice.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "orange-juice",
+      "name": "Orange Juice",
+      "nameTamil": "ஆரஞ்சு ஜூஸ்",
+      "price": 55,
+      "unit": "250ml",
+      "category": "fresh-juices",
+      "variantType": "sugar",
+      "variants": [
+        {
+          "id": "orange-juice-no-sugar",
+          "unit": "Without Sugar",
+          "price": 55
+        },
+        {
+          "id": "orange-juice-with-sugar",
+          "unit": "With Sugar",
+          "price": 55
+        }
+      ],
+      "description": "Freshly squeezed citrus orange juice. Invigorating Vitamin C refreshment for any time of day.",
+      "image": "/product-images/Orange Juice.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "sathukudi-juice",
+      "name": "Sathukudi (Mosambi / Sweet Lime) Juice",
+      "nameTamil": "சாத்துக்குடி ஜூஸ்",
+      "price": 49,
+      "unit": "250ml",
+      "category": "fresh-juices",
+      "variantType": "sugar",
+      "variants": [
+        {
+          "id": "sathukudi-juice-no-sugar",
+          "unit": "Without Sugar",
+          "price": 49
+        },
+        {
+          "id": "sathukudi-juice-with-sugar",
+          "unit": "With Sugar",
+          "price": 49
+        }
+      ],
+      "description": "Naturally sweet and thirst-quenching Mosambi juice. Gentle on digestion and rich in electrolytes.",
+      "image": "/product-images/Sathukudi Juice.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "grape-juice",
+      "name": "Grape Juice",
+      "nameTamil": "திராட்சை ஜூஸ்",
+      "price": 49,
+      "unit": "250ml",
+      "category": "fresh-juices",
+      "variantType": "sugar",
+      "variants": [
+        {
+          "id": "grape-juice-no-sugar",
+          "unit": "Without Sugar",
+          "price": 49
+        },
+        {
+          "id": "grape-juice-with-sugar",
+          "unit": "With Sugar",
+          "price": 49
+        }
+      ],
+      "description": "Rich, deeply flavored black grape juice packed with resveratrol and energizing natural fruit sugars.",
+      "image": "/product-images/Grape Juice.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "watermelon-juice",
+      "name": "Watermelon Juice",
+      "nameTamil": "தர்பூசணி ஜூஸ்",
+      "price": 39,
+      "unit": "250ml",
+      "category": "fresh-juices",
+      "variantType": "sugar",
+      "variants": [
+        {
+          "id": "watermelon-juice-no-sugar",
+          "unit": "Without Sugar",
+          "price": 39
+        },
+        {
+          "id": "watermelon-juice-with-sugar",
+          "unit": "With Sugar",
+          "price": 39
+        }
+      ],
+      "description": "Ultra-refreshing, hydrating fresh watermelon juice. Infused with natural lycopene and cooling sweetness.",
+      "image": "/product-images/Watermelon Juice.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "muskmelon-juice",
+      "name": "Muskmelon (Kirni) Juice",
+      "nameTamil": "கிர்ணி பழ ஜூஸ்",
+      "price": 45,
+      "unit": "250ml",
+      "category": "fresh-juices",
+      "variantType": "sugar",
+      "variants": [
+        {
+          "id": "muskmelon-juice-no-sugar",
+          "unit": "Without Sugar",
+          "price": 45
+        },
+        {
+          "id": "muskmelon-juice-with-sugar",
+          "unit": "With Sugar",
+          "price": 45
+        }
+      ],
+      "description": "Creamy, aromatic Kirni fruit juice. Naturally cools the system and replenishes vitamins.",
+      "image": "/product-images/Muskmelon Juice.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "garlic-powder",
+      "name": "Garlic Powder",
+      "nameTamil": "பூண்டு பொடி",
+      "price": 89,
+      "unit": "100g",
+      "category": "premium-products",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "garlic-powder-100g",
+          "unit": "100g",
+          "price": 89
+        },
+        {
+          "id": "garlic-powder-250g",
+          "unit": "250g",
+          "price": 199
+        }
+      ],
+      "description": "Pure dehydrated garlic powder. Adds rich savory aroma to curries, idli podi, marinades and soups.",
+      "image": "/product-images/Garlic Powder.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "onion-powder",
+      "name": "Onion Powder",
+      "nameTamil": "வெங்காயப் பொடி",
+      "price": 79,
+      "unit": "100g",
+      "category": "premium-products",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "onion-powder-100g",
+          "unit": "100g",
+          "price": 79
+        },
+        {
+          "id": "onion-powder-250g",
+          "unit": "250g",
+          "price": 179
+        }
+      ],
+      "description": "Naturally dried and pulverized onion powder. Easy flavoring for gravies, spice rubs and snacks.",
+      "image": "/product-images/Onion Powder.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "curry-leaves-powder",
+      "name": "Curry Leaves Powder",
+      "nameTamil": "கருவேப்பிலை பொடி",
+      "price": 69,
+      "unit": "100g",
+      "category": "premium-products",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "curry-leaves-powder-100g",
+          "unit": "100g",
+          "price": 69
+        },
+        {
+          "id": "curry-leaves-powder-250g",
+          "unit": "250g",
+          "price": 159
+        }
+      ],
+      "description": "Shade-dried curry leaves ground into a fragrant powder. Excellent with hot ghee rice or idli/dosa.",
+      "image": "/product-images/Curry Leaves Powder.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "amla-powder",
+      "name": "Amla (Gooseberry) Powder",
+      "nameTamil": "நெல்லிக்காய் பொடி",
+      "price": 75,
+      "unit": "100g",
+      "category": "premium-products",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "amla-powder-100g",
+          "unit": "100g",
+          "price": 75
+        },
+        {
+          "id": "amla-powder-250g",
+          "unit": "250g",
+          "price": 169
+        }
+      ],
+      "description": "Pure Indian Gooseberry powder. Daily wellness booster for hair health, digestion and strong immunity.",
+      "image": "/product-images/Amla Powder.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "coconut-powder",
+      "name": "Desiccated Coconut Powder",
+      "nameTamil": "தேங்காய் பொடி",
+      "price": 65,
+      "unit": "100g",
+      "category": "premium-products",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "coconut-powder-100g",
+          "unit": "100g",
+          "price": 65
+        },
+        {
+          "id": "coconut-powder-250g",
+          "unit": "250g",
+          "price": 149
+        }
+      ],
+      "description": "Finely grated and dehydrated pure coconut. Convenient for desserts, baking, sweets and gravies.",
+      "image": "/product-images/Coconut Powder.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "health-mix-powder",
+      "name": "Traditional Health Mix (Sathu Maavu)",
+      "nameTamil": "சத்து மாவு",
+      "price": 129,
+      "unit": "250g",
+      "category": "premium-products",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "health-mix-powder-250g",
+          "unit": "250g",
+          "price": 129
+        },
+        {
+          "id": "health-mix-powder-500g",
+          "unit": "500g",
+          "price": 239
+        },
+        {
+          "id": "health-mix-powder-1kg",
+          "unit": "1kg",
+          "price": 449
+        }
+      ],
+      "description": "Wholesome blend of 20+ millets, grains, pulses and nuts. Perfect porridge for toddlers, kids and adults.",
+      "image": "/product-images/Health Mix Powder.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "almond",
+      "name": "Almond (Badam)",
+      "nameTamil": "பாதாம் பருப்பு",
+      "price": 99,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "almond-100g",
+          "unit": "100g",
+          "price": 99
+        },
+        {
+          "id": "almond-250g",
+          "unit": "250g",
+          "price": 239
+        },
+        {
+          "id": "almond-500g",
+          "unit": "500g",
+          "price": 469
+        },
+        {
+          "id": "almond-1kg",
+          "unit": "1kg",
+          "price": 899
+        }
+      ],
+      "description": "Crunchy, premium California almonds. Rich in Vitamin E, magnesium and plant-based protein.",
+      "image": "/product-images/Almond.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "cashew",
+      "name": "Cashew (Munthiri)",
+      "nameTamil": "முந்திரி பருப்பு",
+      "price": 119,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "cashew-100g",
+          "unit": "100g",
+          "price": 119
+        },
+        {
+          "id": "cashew-250g",
+          "unit": "250g",
+          "price": 289
+        },
+        {
+          "id": "cashew-500g",
+          "unit": "500g",
+          "price": 559
+        },
+        {
+          "id": "cashew-1kg",
+          "unit": "1kg",
+          "price": 1080
+        }
+      ],
+      "description": "Whole W320 premium cashews. Sweet, buttery texture. Excellent for cooking, snacking and festive sweets.",
+      "image": "/product-images/Cashew.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "pista-unsalted",
+      "name": "Pista (Unsalted)",
+      "nameTamil": "பிஸ்தா",
+      "price": 139,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "pista-unsalted-100g",
+          "unit": "100g",
+          "price": 139
+        },
+        {
+          "id": "pista-unsalted-250g",
+          "unit": "250g",
+          "price": 339
+        },
+        {
+          "id": "pista-unsalted-500g",
+          "unit": "500g",
+          "price": 659
+        }
+      ],
+      "description": "Raw, unsalted Iranian pistachios. Rich in lutein, protein and healthy fats for heart and eye wellness.",
+      "image": "/product-images/Pista unsalted.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "walnut",
+      "name": "Walnut (Akhrot Kernels)",
+      "nameTamil": "அக்ரூட்",
+      "price": 149,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "walnut-100g",
+          "unit": "100g",
+          "price": 149
+        },
+        {
+          "id": "walnut-250g",
+          "unit": "250g",
+          "price": 359
+        },
+        {
+          "id": "walnut-500g",
+          "unit": "500g",
+          "price": 699
+        }
+      ],
+      "description": "Brain-boosting Chilean walnut halves. Exceptional natural source of Omega-3 ALA fatty acids.",
+      "image": "/product-images/Walnut.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "black-dates",
+      "name": "Black Dates (Fard / Kimia)",
+      "nameTamil": "கருப்பு பேரீச்சம்பழம்",
+      "price": 69,
+      "unit": "250g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "black-dates-250g",
+          "unit": "250g",
+          "price": 69
+        },
+        {
+          "id": "black-dates-500g",
+          "unit": "500g",
+          "price": 129
+        },
+        {
+          "id": "black-dates-1kg",
+          "unit": "1kg",
+          "price": 249
+        }
+      ],
+      "description": "Soft, juicy black dates rich in dietary iron, potassium and natural energy. Great natural sweetener.",
+      "image": "/product-images/Black Dates.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "fig",
+      "name": "Dried Fig (Anjeer)",
+      "nameTamil": "அத்திப்பழம்",
+      "price": 129,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "fig-100g",
+          "unit": "100g",
+          "price": 129
+        },
+        {
+          "id": "fig-250g",
+          "unit": "250g",
+          "price": 299
+        },
+        {
+          "id": "fig-500g",
+          "unit": "500g",
+          "price": 579
+        }
+      ],
+      "description": "Premium sun-dried figs loaded with calcium and dietary fiber for strong bones and gut health.",
+      "image": "/product-images/Fig.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "yellow-raisins",
+      "name": "Yellow Raisins (Kismis)",
+      "nameTamil": "உலர் திராட்சை",
+      "price": 49,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "yellow-raisins-100g",
+          "unit": "100g",
+          "price": 49
+        },
+        {
+          "id": "yellow-raisins-250g",
+          "unit": "250g",
+          "price": 119
+        },
+        {
+          "id": "yellow-raisins-500g",
+          "unit": "500g",
+          "price": 229
+        }
+      ],
+      "description": "Golden, seedless sweet raisins. Perfect for payasam, sweet pongal, cereals and baking.",
+      "image": "/product-images/Yellow raisins.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "black-raisins",
+      "name": "Black Raisins (With Seeds)",
+      "nameTamil": "கருப்பு உலர் திராட்சை",
+      "price": 55,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "black-raisins-100g",
+          "unit": "100g",
+          "price": 55
+        },
+        {
+          "id": "black-raisins-250g",
+          "unit": "250g",
+          "price": 129
+        },
+        {
+          "id": "black-raisins-500g",
+          "unit": "500g",
+          "price": 249
+        }
+      ],
+      "description": "Traditional seeded black raisins. Renowned for enhancing hemoglobin and soothing acidity.",
+      "image": "/product-images/Black Raisins.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "chia-seeds",
+      "name": "Chia Seeds",
+      "nameTamil": "சியா விதைகள்",
+      "price": 69,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "chia-seeds-100g",
+          "unit": "100g",
+          "price": 69
+        },
+        {
+          "id": "chia-seeds-250g",
+          "unit": "250g",
+          "price": 159
+        },
+        {
+          "id": "chia-seeds-500g",
+          "unit": "500g",
+          "price": 299
+        }
+      ],
+      "description": "Raw black chia seeds. High in soluble fiber and Omega-3. Soak in water, juices, smoothies or puddings.",
+      "image": "/product-images/Chia seeds.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "flax-seeds",
+      "name": "Flax Seeds (Alsi)",
+      "nameTamil": "ஆளி விதைகள்",
+      "price": 39,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "flax-seeds-100g",
+          "unit": "100g",
+          "price": 39
+        },
+        {
+          "id": "flax-seeds-250g",
+          "unit": "250g",
+          "price": 89
+        },
+        {
+          "id": "flax-seeds-500g",
+          "unit": "500g",
+          "price": 169
+        }
+      ],
+      "description": "Golden brown flax seeds loaded with lignans and fiber. Roast and powder for dosas, rotis and chutneys.",
+      "image": "/product-images/Flax seeds.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "pumpkin-seeds",
+      "name": "Pumpkin Seeds (Raw)",
+      "nameTamil": "பூசணி விதைகள்",
+      "price": 79,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "pumpkin-seeds-100g",
+          "unit": "100g",
+          "price": 79
+        },
+        {
+          "id": "pumpkin-seeds-250g",
+          "unit": "250g",
+          "price": 189
+        },
+        {
+          "id": "pumpkin-seeds-500g",
+          "unit": "500g",
+          "price": 359
+        }
+      ],
+      "description": "Nutritious raw green pepitas. Excellent source of zinc, magnesium and restful sleep nutrients.",
+      "image": "/product-images/Pumpkin seeds.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "sunflower-seeds",
+      "name": "Sunflower Seeds (Shelled)",
+      "nameTamil": "சூரியகாந்தி விதைகள்",
+      "price": 49,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "sunflower-seeds-100g",
+          "unit": "100g",
+          "price": 49
+        },
+        {
+          "id": "sunflower-seeds-250g",
+          "unit": "250g",
+          "price": 119
+        },
+        {
+          "id": "sunflower-seeds-500g",
+          "unit": "500g",
+          "price": 219
+        }
+      ],
+      "description": "Shelled sunflower seeds. Crunchy addition to granolas, breads, salads and trail mixes.",
+      "image": "/product-images/Sunflower seeds.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "watermelon-melon-seeds",
+      "name": "Melon Seeds (Magaz)",
+      "nameTamil": "வெள்ளரி / தர்பூசணி விதைகள்",
+      "price": 59,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "watermelon-melon-seeds-100g",
+          "unit": "100g",
+          "price": 59
+        },
+        {
+          "id": "watermelon-melon-seeds-250g",
+          "unit": "250g",
+          "price": 139
+        },
+        {
+          "id": "watermelon-melon-seeds-500g",
+          "unit": "500g",
+          "price": 269
+        }
+      ],
+      "description": "Hulled white melon seeds. Enhances rich curries, gravies, desserts and energy bars.",
+      "image": "/product-images/Melon seeds.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "sabja-seeds",
+      "name": "Sabja Seeds (Basil Seeds)",
+      "nameTamil": "சப்ஜா விதைகள்",
+      "price": 45,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "sabja-seeds-100g",
+          "unit": "100g",
+          "price": 45
+        },
+        {
+          "id": "sabja-seeds-250g",
+          "unit": "250g",
+          "price": 109
+        },
+        {
+          "id": "sabja-seeds-500g",
+          "unit": "500g",
+          "price": 199
+        }
+      ],
+      "description": "Sweet basil seeds that swell in water into a cooling gel. Traditional favorite in Falooda, nannari and sherbets.",
+      "image": "/product-images/Sabja seeds.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "badam-gum",
+      "name": "Badam Gum (Badam Pisin)",
+      "nameTamil": "பாதாம் பிசின்",
+      "price": 65,
+      "unit": "100g",
+      "category": "nuts-seeds",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "badam-gum-100g",
+          "unit": "100g",
+          "price": 65
+        },
+        {
+          "id": "badam-gum-250g",
+          "unit": "250g",
+          "price": 149
+        },
+        {
+          "id": "badam-gum-500g",
+          "unit": "500g",
+          "price": 289
+        }
+      ],
+      "description": "Natural almond gum resin. Renowned body coolant. Essential ingredient for traditional Jigarthanda.",
+      "image": "/product-images/Badam Gum.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "makhana",
+      "name": "Fox Nuts (Phool Makhana)",
+      "nameTamil": "தாமரை விதை மலர்கள்",
+      "price": 79,
+      "unit": "100g",
+      "category": "healthy-snacks",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "makhana-100g",
+          "unit": "100g",
+          "price": 79
+        },
+        {
+          "id": "makhana-250g",
+          "unit": "250g",
+          "price": 189
+        },
+        {
+          "id": "makhana-500g",
+          "unit": "500g",
+          "price": 359
+        }
+      ],
+      "description": "Crispy, puffy lotus seed popped snacks. Low calorie, gluten-free, rich in protein and calcium.",
+      "image": "/product-images/Makhanna.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "ellu-vadai",
+      "name": "Traditional Sesame Vadai (Ellu Vadai)",
+      "nameTamil": "எள்ளு வடை",
+      "price": 45,
+      "unit": "100g Pack",
+      "category": "healthy-snacks",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "ellu-vadai-100g",
+          "unit": "100g",
+          "price": 45
+        },
+        {
+          "id": "ellu-vadai-250g",
+          "unit": "250g",
+          "price": 105
+        }
+      ],
+      "description": "Crunchy traditional South Indian sesame snack made with jaggery and roasted sesame. Rich in iron.",
+      "image": "/product-images/Ellu Vadai.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "thattai-murukku",
+      "name": "Healthy Thattai Murukku",
+      "nameTamil": "தட்டை முறுக்கு",
+      "price": 49,
+      "unit": "150g Pack",
+      "category": "healthy-snacks",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "thattai-murukku-150g",
+          "unit": "150g",
+          "price": 49
+        },
+        {
+          "id": "thattai-murukku-300g",
+          "unit": "300g",
+          "price": 95
+        }
+      ],
+      "description": "Crispy South Indian savory thattai made with pure cold-pressed oil and roasted gram.",
+      "image": "/product-images/Thattai Murukku.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "avocado",
+      "name": "Avocado (Butter Fruit)",
+      "nameTamil": "வெண்ணெய் பழம்",
+      "price": 99,
+      "unit": "1 Piece (~200g)",
+      "category": "seasonal-exotic-fruits",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "avocado-1pc",
+          "unit": "1 Piece (~200g)",
+          "price": 99
+        },
+        {
+          "id": "avocado-2pc",
+          "unit": "2 Pieces (~400g)",
+          "price": 189
+        }
+      ],
+      "description": "Creamy, nutrient-rich Haas avocados. High in monounsaturated heart-healthy fats and potassium.",
+      "image": "/product-images/Avocado.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "dragon-fruit",
+      "name": "Dragon Fruit (Pitaya)",
+      "nameTamil": "டிராகன் பழம்",
+      "price": 89,
+      "unit": "1 Piece (~350g)",
+      "category": "seasonal-exotic-fruits",
+      "description": "Vibrant exotic pitaya with crunchy black seeds and mild sweetness. Great for immune defense.",
+      "image": "/product-images/Dragon Fruit.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "kiwi",
+      "name": "Kiwi Fruit",
+      "nameTamil": "கிவி பழம்",
+      "price": 69,
+      "unit": "3 Pieces Pack",
+      "category": "seasonal-exotic-fruits",
+      "description": "Zesty, refreshing Green Kiwis packed with Vitamin C, actinidin for digestion, and antioxidants.",
+      "image": "/product-images/Kiwi.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "custard-apple",
+      "name": "Custard Apple (Seethapazham)",
+      "nameTamil": "சீத்தாப்பழம்",
+      "price": 79,
+      "unit": "500g Pack",
+      "category": "seasonal-exotic-fruits",
+      "description": "Sweet, creamy seasonal Seethapazham. Loaded with Vitamin B6, potassium and natural sugars.",
+      "image": "/product-images/Custard Apple.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "rambutan",
+      "name": "Rambutan",
+      "nameTamil": "ரம்புட்டான்",
+      "price": 119,
+      "unit": "250g Pack",
+      "category": "seasonal-exotic-fruits",
+      "description": "Tropical spiky fruit with juicy, translucent, sweet and sour pulp. Rich in Vitamin C and minerals.",
+      "image": "/product-images/Rambutan.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "pears",
+      "name": "Green Pears",
+      "nameTamil": "பேரிக்காய்",
+      "price": 89,
+      "unit": "500g Pack",
+      "category": "seasonal-exotic-fruits",
+      "description": "Crisp, refreshing sweet green pears. Excellent dietary fiber and gentle hydration.",
+      "image": "/product-images/Pears.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "apple",
+      "name": "Kashmir / Washington Apple",
+      "nameTamil": "ஆப்பிள்",
+      "price": 119,
+      "unit": "500g (~3-4 pcs)",
+      "category": "seasonal-exotic-fruits",
+      "description": "Crisp, sweet and juicy apples. High in dietary fiber, polyphenols and Vitamin C.",
+      "image": "/product-images/apple.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "lemon",
+      "name": "Fresh Juicy Lemons",
+      "nameTamil": "எலுமிச்சம்பழம்",
+      "price": 25,
+      "unit": "4 Pieces",
+      "category": "seasonal-exotic-fruits",
+      "description": "Thin-skinned, highly juicy fresh yellow lemons. Everyday citrus essential for cooking and drinks.",
+      "image": "/product-images/lemon.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "button-mushroom",
+      "name": "Fresh Button Mushroom",
+      "nameTamil": "பட்டன் காளான்",
+      "price": 49,
+      "unit": "200g Punnet",
+      "category": "mushrooms",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "button-mushroom-200g",
+          "unit": "200g Punnet",
+          "price": 49
+        },
+        {
+          "id": "button-mushroom-400g",
+          "unit": "400g (2 Punnets)",
+          "price": 95
+        }
+      ],
+      "description": "Farm-fresh white button mushrooms. High in protein, selenium and Vitamin D. Great for curries, pizzas and roasts.",
+      "image": "/product-images/Button Mushroom.webp",
+      "inStock": false,
+      "active": true,
+      "updatedAt": "2026-08-28T15:33:11.817Z"
+    },
+    {
+      "id": "oyster-mushroom",
+      "name": "Fresh Oyster Mushroom",
+      "nameTamil": "சிப்பி காளான்",
+      "price": 55,
+      "unit": "200g Pack",
+      "category": "mushrooms",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "oyster-mushroom-200g",
+          "unit": "200g Pack",
+          "price": 55
+        },
+        {
+          "id": "oyster-mushroom-400g",
+          "unit": "400g (2 Packs)",
+          "price": 105
+        }
+      ],
+      "description": "Delicate and savory oyster mushrooms with a rich meaty texture. High in beta-glucans and antioxidants.",
+      "image": "/product-images/Oyster Mushroom.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "cold-pressed-coconut-oil",
+      "name": "Cold Pressed Coconut Oil (Marachekku)",
+      "nameTamil": "மரச்செக்கு தேங்காய் எண்ணெய்",
+      "price": 169,
+      "unit": "500ml",
+      "category": "cold-pressed-oil",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "cold-pressed-coconut-oil-500ml",
+          "unit": "500ml",
+          "price": 169
+        },
+        {
+          "id": "cold-pressed-coconut-oil-1l",
+          "unit": "1L",
+          "price": 329
+        }
+      ],
+      "description": "Extracted in traditional wooden cold presses from sun-dried copra. Unrefined, unbleached, rich in lauric acid.",
+      "image": "/product-images/Coconut Oil.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "cold-pressed-sesame-oil",
+      "name": "Cold Pressed Sesame Oil (Gingelly / Nallennai)",
+      "nameTamil": "மரச்செக்கு நல்லெண்ணெய்",
+      "price": 189,
+      "unit": "500ml",
+      "category": "cold-pressed-oil",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "cold-pressed-sesame-oil-500ml",
+          "unit": "500ml",
+          "price": 189
+        },
+        {
+          "id": "cold-pressed-sesame-oil-1l",
+          "unit": "1L",
+          "price": 369
+        }
+      ],
+      "description": "Wood-pressed black sesame oil blended with palm jaggery. Pure traditional aroma and essential healthy fats.",
+      "image": "/product-images/Sesame Oil.webp",
+      "inStock": true,
+      "active": true
+    },
+    {
+      "id": "cold-pressed-groundnut-oil",
+      "name": "Cold Pressed Groundnut Oil (Kadalai Ennai)",
+      "nameTamil": "மரச்செக்கு கடலை எண்ணெய்",
+      "price": 139,
+      "unit": "500ml",
+      "category": "cold-pressed-oil",
+      "variantType": "weight",
+      "variants": [
+        {
+          "id": "cold-pressed-groundnut-oil-500ml",
+          "unit": "500ml",
+          "price": 139
+        },
+        {
+          "id": "cold-pressed-groundnut-oil-1l",
+          "unit": "1L",
+          "price": 269
+        }
+      ],
+      "description": "Pure cold pressed groundnut (peanut) oil. High smoke point, heart-healthy and free of chemicals.",
+      "image": "/product-images/Groundnut Oil.webp",
+      "inStock": true,
+      "active": true
+    }
+  ],
+  "categories": [
+    {
+      "id": "new-arrivals",
+      "name": "New Arrivals",
+      "emoji": "✨",
+      "description": "Freshly added new arrivals",
+      "color": "#FEF3C7",
+      "sortOrder": 0,
+      "active": true,
+      "image": "https://res.cloudinary.com/kil3rfap/image/upload/v1788403323/ChatGPT_Image_Sep_3_2026_08_11_20_AM.png"
+    },
+    {
+      "id": "keerai",
+      "name": "Greens (Keerai)",
+      "emoji": "🌿",
+      "description": "Fresh leafy greens",
+      "color": "#EAF8F0",
+      "sortOrder": 1,
+      "active": true
+    },
+    {
+      "id": "microgreens",
+      "name": "Microgreens",
+      "emoji": "🌱",
+      "description": "Nutrient-packed microgreens (40g Pack)",
+      "color": "#E8F5E9",
+      "sortOrder": 2,
+      "active": true
+    },
+    {
+      "id": "vegetables",
+      "name": "Cut Vegetables",
+      "emoji": "🧅",
+      "description": "Ready-to-use cut vegetables",
+      "color": "#FFF8E7",
+      "sortOrder": 3,
+      "active": true
+    },
+    {
+      "id": "cut-fruits",
+      "name": "Cut Fruits",
+      "emoji": "🍓",
+      "description": "Fresh cut fruits",
+      "color": "#FFF0F5",
+      "sortOrder": 4,
+      "active": true
+    },
+    {
+      "id": "sprouts",
+      "name": "Sprouts",
+      "emoji": "🫘",
+      "description": "Fresh & nutritious sprouts",
+      "color": "#F0FFF4",
+      "sortOrder": 5,
+      "active": true
+    },
+    {
+      "id": "fresh-juices",
+      "name": "Fresh Juices",
+      "emoji": "🥤",
+      "description": "Freshly squeezed juices",
+      "color": "#FFFBE6",
+      "sortOrder": 6,
+      "active": true
+    },
+    {
+      "id": "premium-products",
+      "name": "Natural Powders",
+      "emoji": "✨",
+      "description": "Pure natural herbal powders",
+      "color": "#FAF0FF",
+      "sortOrder": 7,
+      "active": true
+    },
+    {
+      "id": "nuts-seeds",
+      "name": "Nuts & Seeds",
+      "emoji": "🥜",
+      "description": "Nutritious nuts & seeds",
+      "color": "#FFF5E6",
+      "sortOrder": 8,
+      "active": true
+    },
+    {
+      "id": "healthy-snacks",
+      "name": "Healthy Snacks",
+      "emoji": "🍿",
+      "description": "Guilt-free healthy snacks",
+      "color": "#F5FCF8",
+      "sortOrder": 9,
+      "active": true
+    },
+    {
+      "id": "seasonal-exotic-fruits",
+      "name": "Seasonal & Exotic Fruits",
+      "emoji": "🍍",
+      "description": "Seasonal & exotic fruits",
+      "color": "#FFF8EE",
+      "sortOrder": 10,
+      "active": true
+    },
+    {
+      "id": "mushrooms",
+      "name": "Mushrooms",
+      "emoji": "🍄",
+      "description": "Fresh & dried mushrooms",
+      "color": "#F5F0FF",
+      "sortOrder": 11,
+      "active": true
+    },
+    {
+      "id": "cold-pressed-oil",
+      "name": "Cold Pressed Oil",
+      "emoji": "🫙",
+      "description": "Pure cold pressed oils",
+      "color": "#FFFAEB",
+      "sortOrder": 12,
+      "active": true
+    }
+  ],
+  "updatedAt": "2026-08-28T15:33:11.821Z"
+}

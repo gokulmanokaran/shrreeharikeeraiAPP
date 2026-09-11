@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#00A651" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="application-name" content="Shree Hari" />
+    <meta name="apple-mobile-web-app-title" content="Shree Hari" />
+    
+    <title>Shree Hari — Keerai | Fresh, Natural & Premium Products</title>
+    <meta name="description" content="Fresh cleaned leafy greens, ready-to-use vegetables, premium dry fruits, and healthy seeds delivered directly to your doorstep in Coimbatore." />
+
+    <!-- Web App Manifest for Android PWA / TWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/app-icon.svg" />
+
+    <!-- Google Fonts: Manrope with swap display for optimal FCP / LCP -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <!-- Favicon & App Icon -->
+    <link rel="icon" type="image/svg+xml" href="/app-icon.svg" />
+    <link rel="alternate icon" href="/favicon.svg" />
+  </head>
+  <body class="bg-white antialiased text-[#111111] overflow-x-hidden">
+    <div id="root"></div>
+    <!-- Razorpay Checkout SDK -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
