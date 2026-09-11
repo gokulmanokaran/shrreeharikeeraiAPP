@@ -1,9 +1,9 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 // Supabase Project Credentials with built-in fallbacks for zero-config production deployment
-const DEFAULT_SUPABASE_URL = "https://wgcfkijbgnokeoolajwz.supabase.co";
+const DEFAULT_SUPABASE_URL = "https://wmzevbfhziroffoyxkxf.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndnY2ZraWpiZ25va2Vvb2xhand6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMTE5OTIsImV4cCI6MjEwMjg4Nzk5Mn0.TmVXV3GkBIIWkeDRv6ywwfIOu7N5c-UJ8lQfqd_IFGE";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndtemV2YmZoemlyb2Zmb3l4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxMjIzMzMsImV4cCI6MjEwNDY5ODMzM30.LyuXzyiUQKWf397A9bAUyoNQehZQbcuAYKoniKAX4Vw";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
