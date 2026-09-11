@@ -124,6 +124,12 @@ export async function sendPhoneOtp(
     const code: string = err?.code || "";
     const msg: string = err?.message || "";
 
+    if (code === "auth/billing-not-enabled" || /billing/i.test(msg)) {
+      return {
+        error:
+          "Firebase requires Blaze Plan (Pay as you go) to send SMS. Please upgrade to Blaze in Firebase Console or add this phone under 'Phone numbers for testing' (e.g. OTP: 123456).",
+      };
+    }
     if (/operation.not.allowed/i.test(msg) || code === "auth/operation-not-allowed" || /region/i.test(msg)) {
       return {
         error:
