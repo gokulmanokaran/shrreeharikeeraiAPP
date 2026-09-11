@@ -458,3 +458,116 @@ export async function logoutCustomer(): Promise<void> {
     } catch {}
   }
 }
+
+// ── Phone OTP Login (Supabase built-in Phone Auth) ────────────────────────────
+
+/** Format 10-digit Indian mobile to E.164 (+91XXXXXXXXXX) */
+function formatE164(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("91") && digits.length === 12) return `+${digits}`;
+  return `+91${digits}`;
+}
+
+/**
+ * Send an OTP SMS to a mobile number via Supabase Phone Auth.
+ * Supabase uses the configured SMS provider (Twilio / Messagebird / etc.).
+ */
+export async function sendPhoneLoginOtp(
+  phone: string
+): Promise<{ error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { error: "Authentication service is unavailable." };
+
+  const e164 = formatE164(phone);
+
+  const { error } = await supabase.auth.signInWithOtp({ phone: e164 });
+
+  if (error) {
+    if (/rate limit/i.test(error.message) || /security/i.test(error.message)) {
+      return { error: "Please wait a moment before requesting another OTP." };
+    }
+    if (/invalid/i.test(error.message) || /phone/i.test(error.message)) {
+      return { error: "Invalid mobile number. Please check and try again." };
+    }
+    if (/sms/i.test(error.message) || /provider/i.test(error.message)) {
+      return {
+        error:
+          "SMS service unavailable. Please use Email or Google login instead.",
+      };
+    }
+    return { error: error.message };
+  }
+
+  return {};
+}
+
+/**
+ * Verify a 6-digit phone OTP via Supabase Phone Auth.
+ * On success, creates a real Supabase session.
+ */
+export async function verifyPhoneLoginOtp(
+  phone: string,
+  token: string
+): Promise<AuthActionResult> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { error: "Authentication service is unavailable." };
+
+  const trimmed = token.trim();
+  if (!trimmed || trimmed.length !== 6) {
+    return { error: "Please enter the complete 6-digit OTP." };
+  }
+
+  const e164 = formatE164(phone);
+
+  const { data, error } = await supabase.auth.verifyOtp({
+    phone: e164,
+    token: trimmed,
+    type: "sms",
+  });
+
+  if (error) {
+    if (/expired/i.test(error.message) || /otp/i.test(error.message)) {
+      return {
+        error: "OTP has expired. Please click Resend to get a new code.",
+      };
+    }
+    if (/invalid/i.test(error.message) || /token/i.test(error.message)) {
+      return {
+        error: "Incorrect OTP. Please check the SMS and try again.",
+      };
+    }
+    return { error: error.message };
+  }
+
+  if (data.user) {
+    // Ensure profile row exists (phone-auth users may not have one yet)
+    try {
+      await upsertProfile({
+        id: data.user.id,
+        fullName: String(
+          data.user.user_metadata?.full_name ||
+            data.user.user_metadata?.name ||
+            ""
+        ),
+        email: data.user.email || "",
+        mobile: phone.replace(/\D/g, ""),
+      });
+    } catch {
+      /* profile upsert is non-critical */
+    }
+    return { user: data.user };
+  }
+
+  return {};
+}
+
+/**
+ * Resend Supabase phone OTP.
+ */
+export async function resendPhoneLoginOtp(
+  phone: string
+): Promise<{ error?: string }> {
+  // signInWithOtp acts as both send and resend
+  return sendPhoneLoginOtp(phone);
+}
+
