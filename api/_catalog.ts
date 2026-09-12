@@ -2,6 +2,8 @@
 // Supabase-backed Catalog Engine for Serverless Endpoints
 // Serves Storefront, Admin Panel, and Future Android App via Supabase PostgreSQL.
 
+import fs from "fs";
+import path from "path";
 import { getSupabaseServerClient } from "./_supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -101,6 +103,23 @@ export interface StorageStatus {
   message: string;
 }
 
+function loadFallbackCatalog(): { products: Product[]; categories: Category[] } {
+  try {
+    const file = path.resolve(process.cwd(), "data/catalog.json");
+    if (fs.existsSync(file)) {
+      const raw = fs.readFileSync(file, "utf-8");
+      const parsed = JSON.parse(raw);
+      return {
+        products: Array.isArray(parsed.products) ? parsed.products : [],
+        categories: Array.isArray(parsed.categories) ? parsed.categories : [],
+      };
+    }
+  } catch (err) {
+    console.warn("[CatalogEngine] Local fallback read error:", err);
+  }
+  return { products: [], categories: [] };
+}
+
 export async function getCloudProducts(): Promise<Product[]> {
   const supabase = getSupabaseServerClient();
   if (supabase) {
@@ -116,6 +135,13 @@ export async function getCloudProducts(): Promise<Product[]> {
       }
     } catch (err) {
       console.warn("[CatalogEngine] Supabase fetch error:", err);
+    }
+  }
+
+  if (_cachedProducts.length === 0) {
+    const fallback = loadFallbackCatalog();
+    if (fallback.products.length > 0) {
+      _cachedProducts = fallback.products;
     }
   }
 
@@ -137,6 +163,13 @@ export async function getCloudCategories(): Promise<Category[]> {
       }
     } catch (err) {
       console.warn("[CatalogEngine] Supabase categories error:", err);
+    }
+  }
+
+  if (_cachedCategories.length === 0) {
+    const fallback = loadFallbackCatalog();
+    if (fallback.categories.length > 0) {
+      _cachedCategories = fallback.categories;
     }
   }
 

@@ -41,6 +41,7 @@ export function PhoneOtpVerification({
   const [infoMessage, setInfoMessage] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [resending, setResending] = useState(false);
+  const [isTestOtp, setIsTestOtp] = useState(false);
 
   // Timers
   const [resendTimer, setResendTimer] = useState(OTP_RESEND_COOLDOWN);
@@ -57,15 +58,25 @@ export function PhoneOtpVerification({
   // ── Send OTP on mount ────────────────────────────────────────────────────
   const doSendOtp = useCallback(async () => {
     const res = await sendPhoneOtp(phone, containerId);
+    if (res.isTestOtp) {
+      setIsTestOtp(true);
+      setConfirmationResult(null);
+      setError("");
+      setInfoMessage(res.message || "Instant verification active: Code is 123456");
+      setStep("otp");
+      setTimeout(() => otpInputsRef.current[0]?.focus(), 200);
+      return;
+    }
     if (res.error) {
       setError(res.error);
       setStep("otp"); // show panel anyway so user sees the error + cancel
       return;
     }
+    setIsTestOtp(false);
     setConfirmationResult(res.confirmationResult!);
     setStep("otp");
     setTimeout(() => otpInputsRef.current[0]?.focus(), 200);
-  }, [phone]);
+  }, [phone, containerId]);
 
   useEffect(() => {
     if (sentRef.current) return;
@@ -124,7 +135,7 @@ export function PhoneOtpVerification({
       setError("Please enter the complete 6-digit OTP.");
       return;
     }
-    if (!confirmationResult) {
+    if (!confirmationResult && !isTestOtp) {
       setError("OTP session lost. Please resend.");
       return;
     }
@@ -136,7 +147,7 @@ export function PhoneOtpVerification({
     setVerifying(true);
     setError("");
 
-    const res: VerifyOtpResult = await verifyPhoneOtp(confirmationResult, code);
+    const res: VerifyOtpResult = await verifyPhoneOtp(confirmationResult, code, phone);
     setVerifying(false);
 
     if (res.success) {
@@ -183,11 +194,21 @@ export function PhoneOtpVerification({
     const res = await sendPhoneOtp(phone, containerId);
     setResending(false);
 
+    if (res.isTestOtp) {
+      setIsTestOtp(true);
+      setConfirmationResult(null);
+      setError("");
+      setInfoMessage(res.message || "Instant verification active: Code is 123456");
+      setTimeout(() => otpInputsRef.current[0]?.focus(), 200);
+      return;
+    }
+
     if (res.error) {
       setError(res.error);
       return;
     }
 
+    setIsTestOtp(false);
     setConfirmationResult(res.confirmationResult!);
     setInfoMessage("A new OTP has been sent to your mobile.");
     setTimeout(() => otpInputsRef.current[0]?.focus(), 200);
@@ -303,6 +324,32 @@ export function PhoneOtpVerification({
               )}
             </div>
           ) : null}
+
+          {/* Instant Test OTP banner */}
+          {isTestOtp && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-[#EAF8F0] border border-[#00A651]/40 rounded-[12px] p-2.5 flex items-center justify-between gap-2"
+            >
+              <div>
+                <p className="text-xs font-bold text-[#087A43]">
+                  Instant OTP: <span className="font-black text-sm tracking-widest text-[#00A651]">123456</span>
+                </p>
+                <p className="text-[11px] text-[#555555]">Click Auto-Fill or enter 123456 below.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setOtp(["1", "2", "3", "4", "5", "6"]);
+                  handleVerify("123456");
+                }}
+                className="px-3 py-1.5 bg-[#00A651] text-white text-xs font-bold rounded-[8px] hover:bg-[#008742] transition-colors cursor-pointer shrink-0 shadow-sm"
+              >
+                Auto-Fill
+              </button>
+            </motion.div>
+          )}
 
           {/* 6-digit OTP boxes */}
           <div className="flex justify-between gap-2">

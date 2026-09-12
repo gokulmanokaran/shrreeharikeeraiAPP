@@ -1,5 +1,36 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getSupabaseServerClient } from "./_supabase";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
+
+const DEFAULT_SUPABASE_URL = "https://wmzevbfhziroffoyxkxf.supabase.co";
+const DEFAULT_SUPABASE_SERVICE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndtemV2YmZoemlyb2Zmb3l4a3hmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTEyMjMzMywiZXhwIjoyMTA0Njk4MzMzfQ.pLslXyHLL9tSX9ox3sNHgyaCh50S5jjT0y1EDoxBggU";
+
+let _supabaseServerClient: SupabaseClient | null = null;
+
+function getServerClient(): SupabaseClient | null {
+  if (_supabaseServerClient) return _supabaseServerClient;
+
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_KEY ||
+    process.env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    DEFAULT_SUPABASE_SERVICE_KEY;
+
+  if (url && key) {
+    try {
+      _supabaseServerClient = createClient(url, key, {
+        auth: { persistSession: false },
+      });
+      return _supabaseServerClient;
+    } catch (err) {
+      console.warn("[Supabase Server] Initialization error:", err);
+    }
+  }
+
+  return null;
+}
 
 /**
  * POST /api/phone-login
@@ -30,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "Invalid mobile number. Must be a 10-digit Indian number." });
   }
 
-  const supabase = getSupabaseServerClient();
+  const supabase = getServerClient();
   if (!supabase) {
     return res.status(500).json({ error: "Server configuration error. Supabase client unavailable." });
   }
