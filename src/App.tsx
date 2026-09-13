@@ -28,7 +28,6 @@ const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const EditProfilePage = lazy(() => import("./pages/EditProfilePage"));
 const OrdersPage = lazy(() => import("./pages/OrdersPage"));
-const AccountSettingsPage = lazy(() => import("./pages/AccountSettingsPage"));
 const AuthCallbackPage = lazy(() => import("./pages/AuthCallbackPage"));
 
 import { TopSnackbar } from "./components/ui/TopSnackbar";
@@ -252,11 +251,7 @@ export default function App() {
               />
               <Route
                 path="/account"
-                element={
-                  <RequireAuth>
-                    <AccountSettingsPage />
-                  </RequireAuth>
-                }
+                element={<Navigate to="/profile" replace />}
               />
 
               {/* Legal & Compliance Policy Routes */}

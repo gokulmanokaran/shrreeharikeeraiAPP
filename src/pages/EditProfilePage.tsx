@@ -30,7 +30,8 @@ export default function EditProfilePage() {
     setLoading(true);
     setError("");
     setSuccess("");
-    const result = await updateCustomerProfile({ fullName, email, mobile });
+    const fixedEmail = user?.email || profile?.email || email;
+    const result = await updateCustomerProfile({ fullName, email: fixedEmail, mobile });
     setLoading(false);
     if (result.error) {
       setError(result.error);
@@ -46,7 +47,7 @@ export default function EditProfilePage() {
       <Header onSearchOpen={() => navigate("/search")} />
       <main className="pb-24 max-w-lg mx-auto px-4 pt-5">
         <h1 className="text-xl font-black text-[#111111] mb-1">Edit Profile</h1>
-        <p className="text-sm text-[#666666] mb-5">Update your name, email, and mobile number.</p>
+        <p className="text-sm text-[#666666] mb-5">Update your name and mobile number.</p>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-[20px] border border-[#EAEAEA] shadow-sm p-4 sm:p-5 flex flex-col gap-3.5" noValidate>
           <AuthField
@@ -59,12 +60,14 @@ export default function EditProfilePage() {
           />
           <AuthField
             id="edit-email"
-            label="Email"
+            label="Email Address"
             type="email"
             value={email}
-            onChange={(v) => { setEmail(v); setError(""); }}
+            onChange={() => {}}
             placeholder="your@email.com"
             autoComplete="email"
+            disabled={true}
+            helperText="Email address cannot be changed."
           />
           <AuthField
             id="edit-mobile"

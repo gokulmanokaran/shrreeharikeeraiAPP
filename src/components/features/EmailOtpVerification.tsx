@@ -103,7 +103,7 @@ export function EmailOtpVerification({
       return;
     }
 
-    setInfoMessage("A new verification code has been sent. Please check your inbox and spam folder.");
+    setInfoMessage("A new verification code has been sent. Please check your inbox.");
     setResendTimer(60);
     setCanResend(false);
     setOtp(["", "", "", "", "", ""]);
@@ -179,8 +179,7 @@ export function EmailOtpVerification({
         </p>
         <p className="text-[11px] text-[#555555] mt-1 leading-relaxed">
           A 6-digit code was sent to your inbox. It can take{" "}
-          <strong>1–3 minutes</strong> to arrive.{" "}
-          <strong>Check your spam / junk folder</strong> if you don't see it.
+          <strong>1–3 minutes</strong> to arrive.
         </p>
       </div>
 
@@ -290,11 +289,9 @@ export function EmailOtpVerification({
         )}
       </div>
 
-      {/* Spam folder tip */}
+      {/* Code expiry note */}
       <p className="text-[10px] text-[#AAAAAA] text-center leading-relaxed">
-        Can't find the email? Check your <strong>spam</strong> or{" "}
-        <strong>junk</strong> folder. The code expires in{" "}
-        <strong>60 minutes</strong>.
+        The code expires in <strong>60 minutes</strong>.
       </p>
     </motion.div>
   );

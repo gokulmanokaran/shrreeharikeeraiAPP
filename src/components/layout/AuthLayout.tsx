@@ -41,6 +41,9 @@ export function AuthField({
   autoComplete,
   inputMode,
   maxLength,
+  disabled,
+  readOnly,
+  helperText,
 }: {
   id: string;
   label: string;
@@ -52,12 +55,22 @@ export function AuthField({
   autoComplete?: string;
   inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
   maxLength?: number;
+  disabled?: boolean;
+  readOnly?: boolean;
+  helperText?: string;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-xs font-bold text-[#555555]">
-        {label}
-      </label>
+      <div className="flex items-center justify-between">
+        <label htmlFor={id} className="text-xs font-bold text-[#555555]">
+          {label}
+        </label>
+        {disabled && (
+          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+            Read Only
+          </span>
+        )}
+      </div>
       <input
         id={id}
         type={type}
@@ -67,12 +80,19 @@ export function AuthField({
         autoComplete={autoComplete}
         inputMode={inputMode}
         maxLength={maxLength}
+        disabled={disabled}
+        readOnly={readOnly}
         className={`w-full h-12 px-4 border-2 rounded-[12px] text-sm font-medium focus:outline-none transition-colors ${
-          error
+          disabled || readOnly
+            ? "border-gray-200 bg-gray-100/80 text-gray-500 cursor-not-allowed select-none focus:border-gray-200"
+            : error
             ? "border-[#EA4335] bg-red-50/50 focus:border-[#EA4335]"
             : "border-[#EAEAEA] focus:border-[#00A651]"
         }`}
       />
+      {helperText && !error && (
+        <p className="text-[11px] text-[#777777] px-1 font-medium">{helperText}</p>
+      )}
       {error && <p className="text-[#EA4335] text-xs font-semibold px-1">{error}</p>}
     </div>
   );
