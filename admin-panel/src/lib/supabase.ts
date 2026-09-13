@@ -1,10 +1,10 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const DEFAULT_SUPABASE_URL = "https://wgcfkijbgnokeoolajwz.supabase.co";
+const DEFAULT_SUPABASE_URL = "https://wmzevbfhziroffoyxkxf.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndnY2ZraWpiZ25va2Vvb2xhand6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMTE5OTIsImV4cCI6MjEwMjg4Nzk5Mn0.TmVXV3GkBIIWkeDRv6ywwfIOu7N5c-UJ8lQfqd_IFGE";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndtemV2YmZoemlyb2Zmb3l4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxMjIzMzMsImV4cCI6MjEwNDY5ODMzM30.LyuXzyiUQKWf397A9bAUyoNQehZQbcuAYKoniKAX4Vw";
 const DEFAULT_SUPABASE_SERVICE_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndnY2ZraWpiZ25va2Vvb2xhand6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzMxMTk5MiwiZXhwIjoyMTAyODg3OTkyfQ.vODVW6mMX3Ld2ux4SaVmIJVH8meh2BDnXaEubmOiDLk";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndtemV2YmZoemlyb2Zmb3l4a3hmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTEyMjMzMywiZXhwIjoyMTA0Njk4MzMzfQ.pLslXyHLL9tSX9ox3sNHgyaCh50S5jjT0y1EDoxBggU";
 
 const CUSTOM_URL_KEY = "shk_custom_supabase_url";
 const CUSTOM_KEY_KEY = "shk_custom_supabase_key";
@@ -18,6 +18,13 @@ export function getAdminSupabaseConfig(): { url: string; key: string } {
   try {
     url = localStorage.getItem(CUSTOM_URL_KEY) || "";
     key = localStorage.getItem(CUSTOM_KEY_KEY) || "";
+    // Clean up any stale old Supabase project URL from local cache
+    if (url && url.includes("wgcfkijbgnokeoolajwz")) {
+      localStorage.removeItem(CUSTOM_URL_KEY);
+      localStorage.removeItem(CUSTOM_KEY_KEY);
+      url = "";
+      key = "";
+    }
   } catch {
     // ignore
   }

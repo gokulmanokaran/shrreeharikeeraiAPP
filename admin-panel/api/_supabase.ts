@@ -1,8 +1,8 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const DEFAULT_SUPABASE_URL = "https://wgcfkijbgnokeoolajwz.supabase.co";
+const DEFAULT_SUPABASE_URL = "https://wmzevbfhziroffoyxkxf.supabase.co";
 const DEFAULT_SUPABASE_SERVICE_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndnY2ZraWpiZ25va2Vvb2xhand6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzMxMTk5MiwiZXhwIjoyMTAyODg3OTkyfQ.vODVW6mMX3Ld2ux4SaVmIJVH8meh2BDnXaEubmOiDLk";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndtemV2YmZoemlyb2Zmb3l4a3hmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTEyMjMzMywiZXhwIjoyMTA0Njk4MzMzfQ.pLslXyHLL9tSX9ox3sNHgyaCh50S5jjT0y1EDoxBggU";
 
 let _supabaseServerClient: SupabaseClient | null = null;
 
