@@ -4,7 +4,6 @@ import {
   validateConfirmPassword,
   validateName,
   validatePassword,
-  validatePhone,
   validateRequiredEmail,
 } from "../utils/validation";
 
@@ -156,8 +155,10 @@ export async function upsertProfile(profile: CustomerProfile): Promise<{ error?:
 
 export interface AuthActionResult {
   error?: string;
+  warning?: string;
   needsEmailVerification?: boolean;
   unconfirmedEmail?: string;
+  emailAlreadyExists?: boolean;
   user?: User;
 }
 
@@ -219,15 +220,13 @@ export async function loginCustomer(input: {
 
 /**
  * Register a new user with Full Name, Email, Password, and Confirm Password.
- * Supabase sends an email OTP / confirmation code.
+ * Supabase sends a 6-digit OTP to the user's email for verification.
  */
 export async function registerCustomer(input: {
   fullName: string;
   email: string;
   password: string;
   confirmPassword: string;
-  mobile?: string;
-  phoneVerified?: boolean;
 }): Promise<AuthActionResult> {
   const nameErr = validateName(input.fullName);
   if (nameErr) return { error: nameErr };
@@ -238,12 +237,36 @@ export async function registerCustomer(input: {
   const confirmErr = validateConfirmPassword(input.password, input.confirmPassword);
   if (confirmErr) return { error: confirmErr };
 
-  const supabase = getSupabaseClient();
-  if (!supabase) return { error: "Authentication service is unavailable." };
-
   const email = input.email.trim().toLowerCase();
   const fullName = input.fullName.trim();
-  const cleanMobile = (input.mobile || "").replace(/\D/g, "");
+
+  // 1. Server-side pre-check for existing account (secure, credentials not exposed)
+  try {
+    const checkUrl =
+      typeof window !== "undefined"
+        ? "/api/auth/check-email"
+        : "http://localhost:5173/api/auth/check-email";
+
+    const checkRes = await fetch(checkUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    if (checkRes.ok) {
+      const checkData = await checkRes.json();
+      if (checkData.exists && checkData.isVerified) {
+        return {
+          error: "An account already exists with this email address. Please log in instead.",
+          emailAlreadyExists: true,
+        };
+      }
+    }
+  } catch {
+    /* If /api/auth/check-email is unreachable, proceed to Supabase signUp verification */
+  }
+
+  const supabase = getSupabaseClient();
+  if (!supabase) return { error: "Authentication service is unavailable." };
 
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -251,23 +274,37 @@ export async function registerCustomer(input: {
     options: {
       data: {
         full_name: fullName,
-        mobile: cleanMobile,
-        phone_verified: !!input.phoneVerified,
       },
     },
   });
 
   if (error) {
-    if (/already/i.test(error.message) || /registered/i.test(error.message)) {
-      return { error: "An account with this email already exists. Please log in." };
+    if (
+      /already/i.test(error.message) ||
+      /user.*already/i.test(error.message) ||
+      (error as any).status === 422
+    ) {
+      return {
+        error: "An account already exists with this email address. Please log in instead.",
+        emailAlreadyExists: true,
+      };
     }
     if (/rate limit/i.test(error.message)) {
-      return { error: "Email rate limit reached. Please wait a few minutes before trying again." };
+      return { error: "Too many requests. Please wait a few minutes before trying again." };
     }
     return { error: error.message };
   }
 
-  // If email confirmation is required (data.session is null), switch to OTP verification
+  // 2. Supabase duplicate account detection (when Prevent User Enumeration is enabled)
+  // When an email is already registered, Supabase returns identities: []
+  if (data.user && (data.user.identities?.length ?? 1) === 0) {
+    return {
+      error: "An account already exists with this email address. Please log in instead.",
+      emailAlreadyExists: true,
+    };
+  }
+
+  // 3. Genuinely new user created — email confirmation required (session is null)
   if (data.user && !data.session) {
     return {
       needsEmailVerification: true,
@@ -276,13 +313,12 @@ export async function registerCustomer(input: {
     };
   }
 
-  // If project has confirmations disabled and signed in immediately
+  // 4. Email confirmations disabled on this project — user is signed in immediately
   if (data.user && data.session) {
     await upsertProfile({
       id: data.user.id,
       fullName,
       email,
-      mobile: cleanMobile,
     });
     return { user: data.user };
   }
@@ -311,8 +347,8 @@ export async function verifyEmailOtp(
   if (emailErr) return { success: false, error: emailErr };
 
   const trimmedToken = token.trim();
-  if (!trimmedToken || trimmedToken.length !== 6) {
-    return { success: false, error: "Please enter the complete 6-digit verification code." };
+  if (!trimmedToken || trimmedToken.length < 6) {
+    return { success: false, error: "Please enter the complete verification code." };
   }
 
   const supabase = getSupabaseClient();
@@ -320,17 +356,35 @@ export async function verifyEmailOtp(
 
   const cleanEmail = email.trim().toLowerCase();
 
-  const { data, error } = await supabase.auth.verifyOtp({
+  let { data, error } = await supabase.auth.verifyOtp({
     email: cleanEmail,
     token: trimmedToken,
     type: "signup",
   });
 
+  if (error && (/invalid/i.test(error.message) || /expired/i.test(error.message))) {
+    // Attempt fallback with type: "email"
+    const retry = await supabase.auth.verifyOtp({
+      email: cleanEmail,
+      token: trimmedToken,
+      type: "email",
+    });
+    if (!retry.error && retry.data?.user) {
+      data = retry.data;
+      error = null;
+    }
+  }
+
   if (error) {
-    if (/expired/i.test(error.message) || /invalid/i.test(error.message) || /token/i.test(error.message)) {
+    if (
+      /expired/i.test(error.message) ||
+      /invalid/i.test(error.message) ||
+      /token/i.test(error.message) ||
+      (error as any).code === "otp_expired"
+    ) {
       return {
         success: false,
-        error: "Incorrect or expired verification code. Please check your email or click Resend OTP.",
+        error: "Incorrect or expired verification code. Please check your email or click Resend Code.",
       };
     }
     return { success: false, error: error.message };
@@ -370,10 +424,14 @@ export async function resendEmailOtp(
   });
 
   if (error) {
-    if ((error as any).code === "over_email_send_rate_limit" || /security/i.test(error.message) || /rate limit/i.test(error.message)) {
+    const isRateLimit =
+      (error as any).code === "over_email_send_rate_limit" ||
+      /security/i.test(error.message) ||
+      /rate limit/i.test(error.message);
+    if (isRateLimit) {
       return {
         success: false,
-        error: "Please wait a moment before requesting another verification code.",
+        error: "Please wait at least 60 seconds before requesting another code.",
       };
     }
     return { success: false, error: error.message };
@@ -382,17 +440,72 @@ export async function resendEmailOtp(
   return { success: true };
 }
 
-export async function requestPasswordReset(email: string): Promise<{ error?: string }> {
+export function getResetPasswordRedirectUrl(): string {
+  // If running in browser on a production domain (not localhost or 127.0.0.1)
+  if (
+    typeof window !== "undefined" &&
+    window.location.hostname !== "localhost" &&
+    window.location.hostname !== "127.0.0.1"
+  ) {
+    return `${window.location.origin}/reset-password`;
+  }
+  // Production fallback URL (ensures email link points to live app and never fails with "Site can't be reached")
+  const productionBase =
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_SITE_URL) ||
+    "https://shrreeharikeerai-app.vercel.app";
+  return `${productionBase.replace(/\/+$/, "")}/reset-password`;
+}
+
+export async function requestPasswordReset(email: string): Promise<{
+  error?: string;
+  notFound?: boolean;
+  success?: boolean;
+}> {
   const emailErr = validateRequiredEmail(email);
   if (emailErr) return { error: emailErr };
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  // 1. Check if an account exists for this email address securely on the backend
+  try {
+    const checkUrl =
+      typeof window !== "undefined"
+        ? "/api/auth/check-email"
+        : "http://localhost:5173/api/auth/check-email";
+
+    const checkRes = await fetch(checkUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: cleanEmail,
+        checkOnly: true,
+        action: "forgot-password",
+      }),
+    });
+    if (checkRes.ok) {
+      const checkData = await checkRes.json();
+      if (!checkData.exists) {
+        return {
+          error: "No account found with this email address. Please create an account first.",
+          notFound: true,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[requestPasswordReset] Pre-check error:", err);
+  }
+
   const supabase = getSupabaseClient();
   if (!supabase) return { error: "Authentication service is unavailable." };
 
-  const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-    redirectTo: `${window.location.origin}/reset-password`,
+  const redirectTo = getResetPasswordRedirectUrl();
+
+  const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+    redirectTo,
   });
+
   if (error) return { error: error.message };
-  return {};
+  return { success: true };
 }
 
 export async function updateCustomerPassword(
@@ -419,11 +532,6 @@ export async function updateCustomerProfile(input: {
   if (nameErr) return { error: nameErr };
   const emailErr = validateRequiredEmail(input.email);
   if (emailErr) return { error: emailErr };
-
-  if (input.mobile && input.mobile.trim() !== "") {
-    const mobileErr = validatePhone(input.mobile);
-    if (mobileErr) return { error: mobileErr };
-  }
 
   const fullName = input.fullName.trim();
   const email = input.email.trim().toLowerCase();
@@ -463,117 +571,5 @@ export async function logoutCustomer(): Promise<void> {
       await supabase.auth.signOut();
     } catch {}
   }
-}
-
-// ── Phone OTP Login (Supabase built-in Phone Auth) ────────────────────────────
-
-/** Format 10-digit Indian mobile to E.164 (+91XXXXXXXXXX) */
-function formatE164(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.startsWith("91") && digits.length === 12) return `+${digits}`;
-  return `+91${digits}`;
-}
-
-/**
- * Send an OTP SMS to a mobile number via Supabase Phone Auth.
- * Supabase uses the configured SMS provider (Twilio / Messagebird / etc.).
- */
-export async function sendPhoneLoginOtp(
-  phone: string
-): Promise<{ error?: string }> {
-  const supabase = getSupabaseClient();
-  if (!supabase) return { error: "Authentication service is unavailable." };
-
-  const e164 = formatE164(phone);
-
-  const { error } = await supabase.auth.signInWithOtp({ phone: e164 });
-
-  if (error) {
-    if (/rate limit/i.test(error.message) || /security/i.test(error.message)) {
-      return { error: "Please wait a moment before requesting another OTP." };
-    }
-    if (/invalid/i.test(error.message) || /phone/i.test(error.message)) {
-      return { error: "Invalid mobile number. Please check and try again." };
-    }
-    if (/sms/i.test(error.message) || /provider/i.test(error.message)) {
-      return {
-        error:
-          "SMS service unavailable. Please use Email or Google login instead.",
-      };
-    }
-    return { error: error.message };
-  }
-
-  return {};
-}
-
-/**
- * Verify a 6-digit phone OTP via Supabase Phone Auth.
- * On success, creates a real Supabase session.
- */
-export async function verifyPhoneLoginOtp(
-  phone: string,
-  token: string
-): Promise<AuthActionResult> {
-  const supabase = getSupabaseClient();
-  if (!supabase) return { error: "Authentication service is unavailable." };
-
-  const trimmed = token.trim();
-  if (!trimmed || trimmed.length !== 6) {
-    return { error: "Please enter the complete 6-digit OTP." };
-  }
-
-  const e164 = formatE164(phone);
-
-  const { data, error } = await supabase.auth.verifyOtp({
-    phone: e164,
-    token: trimmed,
-    type: "sms",
-  });
-
-  if (error) {
-    if (/expired/i.test(error.message) || /otp/i.test(error.message)) {
-      return {
-        error: "OTP has expired. Please click Resend to get a new code.",
-      };
-    }
-    if (/invalid/i.test(error.message) || /token/i.test(error.message)) {
-      return {
-        error: "Incorrect OTP. Please check the SMS and try again.",
-      };
-    }
-    return { error: error.message };
-  }
-
-  if (data.user) {
-    // Ensure profile row exists (phone-auth users may not have one yet)
-    try {
-      await upsertProfile({
-        id: data.user.id,
-        fullName: String(
-          data.user.user_metadata?.full_name ||
-            data.user.user_metadata?.name ||
-            ""
-        ),
-        email: data.user.email || "",
-        mobile: phone.replace(/\D/g, ""),
-      });
-    } catch {
-      /* profile upsert is non-critical */
-    }
-    return { user: data.user };
-  }
-
-  return {};
-}
-
-/**
- * Resend Supabase phone OTP.
- */
-export async function resendPhoneLoginOtp(
-  phone: string
-): Promise<{ error?: string }> {
-  // signInWithOtp acts as both send and resend
-  return sendPhoneLoginOtp(phone);
 }
 

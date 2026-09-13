@@ -64,67 +64,7 @@ function localDevApiPlugin(): Plugin {
           process.env.SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY || "";
         }
 
-        if (
-          (url.startsWith("/api/auth/signup") || url.startsWith("/api/auth/resolve-login")) &&
-          (req.method === "POST" || req.method === "OPTIONS")
-        ) {
-          let rawBody = "";
-          req.on("data", (chunk: any) => {
-            rawBody += chunk;
-          });
-          req.on("end", async () => {
-            try {
-              if (req.method === "OPTIONS") {
-                res.statusCode = 200;
-                res.end();
-                return;
-              }
-              const body = JSON.parse(rawBody || "{}");
-              const authModUrl = pathToFileURL(path.resolve(__dirname, "api/auth/_customerAuth.ts")).href;
-              const { createCustomerAccount, resolveLoginEmail } = (await import(authModUrl)) as {
-                createCustomerAccount: (input: {
-                  fullName: string;
-                  email: string;
-                  mobile: string;
-                  password: string;
-                }) => Promise<{ success?: boolean; error?: string }>;
-                resolveLoginEmail: (
-                  identifier: string
-                ) => Promise<{ email?: string; error?: string }>;
-              };
-              if (url.startsWith("/api/auth/signup")) {
-                const result = await createCustomerAccount({
-                  fullName: String(body?.fullName || body?.full_name || ""),
-                  email: String(body?.email || ""),
-                  mobile: String(body?.mobile || ""),
-                  password: String(body?.password || ""),
-                });
-                res.setHeader("Content-Type", "application/json");
-                res.statusCode = result.error ? 400 : 200;
-                res.end(JSON.stringify(result.error ? { success: false, error: result.error } : { success: true }));
-                return;
-              }
-              const result = await resolveLoginEmail(String(body?.identifier || body?.email || body?.mobile || ""));
-              res.setHeader("Content-Type", "application/json");
-              res.statusCode = result.email ? 200 : 404;
-              res.end(
-                JSON.stringify(
-                  result.email
-                    ? { success: true, email: result.email }
-                    : { success: false, error: result.error || "No account found." }
-                )
-              );
-            } catch (err: any) {
-              res.setHeader("Content-Type", "application/json");
-              res.statusCode = 500;
-              res.end(JSON.stringify({ success: false, error: err?.message || "Internal error" }));
-            }
-          });
-          return;
-        }
-
-        // POST /api/phone-login (Local dev support)
-        if (url.startsWith("/api/phone-login") && (req.method === "POST" || req.method === "OPTIONS")) {
+        if (url.startsWith("/api/auth/check-email") && (req.method === "POST" || req.method === "OPTIONS")) {
           if (req.method === "OPTIONS") {
             res.statusCode = 200;
             res.end();
@@ -136,35 +76,80 @@ function localDevApiPlugin(): Plugin {
           });
           req.on("end", async () => {
             try {
-              const phoneLoginUrl = pathToFileURL(path.resolve(__dirname, "api/phone-login.ts")).href;
-              const { default: handler } = await import(phoneLoginUrl);
-              const fakeReq = {
-                method: "POST",
-                body: rawBody ? JSON.parse(rawBody) : {},
-              } as any;
-              const fakeRes = {
-                statusCode: 200,
-                setHeader: (k: string, v: string) => res.setHeader(k, v),
-                status: function (code: number) {
-                  this.statusCode = code;
-                  res.statusCode = code;
-                  return this;
-                },
-                json: function (payload: any) {
-                  res.setHeader("Content-Type", "application/json");
-                  res.statusCode = this.statusCode || 200;
-                  res.end(JSON.stringify(payload));
-                },
-              } as any;
-              await handler(fakeReq, fakeRes);
+              const body = JSON.parse(rawBody || "{}");
+              const targetEmail = String(body?.email || "").trim().toLowerCase();
+              if (!targetEmail) {
+                res.setHeader("Content-Type", "application/json");
+                res.statusCode = 400;
+                res.end(JSON.stringify({ exists: false, error: "Email is required" }));
+                return;
+              }
+
+              const serverModUrl = pathToFileURL(path.resolve(__dirname, "api/_supabase.ts")).href;
+              const { getSupabaseServerClient } = (await import(serverModUrl)) as {
+                getSupabaseServerClient: () => any;
+              };
+              const serverClient = getSupabaseServerClient();
+              if (!serverClient) {
+                res.setHeader("Content-Type", "application/json");
+                res.statusCode = 200;
+                res.end(JSON.stringify({ exists: false }));
+                return;
+              }
+
+              const { data } = await serverClient.auth.admin.listUsers();
+              const existingUser = (data?.users || []).find(
+                (u: any) => u.email?.toLowerCase() === targetEmail
+              );
+
+              if (!existingUser) {
+                res.setHeader("Content-Type", "application/json");
+                res.statusCode = 200;
+                res.end(JSON.stringify({ exists: false, isVerified: false }));
+                return;
+              }
+
+              const isVerified = Boolean(
+                existingUser.email_confirmed_at ||
+                existingUser.confirmed_at ||
+                existingUser.user_metadata?.email_verified === true
+              );
+
+              const checkOnly = Boolean(body?.checkOnly || body?.action === "forgot-password");
+              if (checkOnly) {
+                res.setHeader("Content-Type", "application/json");
+                res.statusCode = 200;
+                res.end(JSON.stringify({ exists: isVerified, isVerified }));
+                return;
+              }
+
+              if (isVerified) {
+                res.setHeader("Content-Type", "application/json");
+                res.statusCode = 200;
+                res.end(JSON.stringify({ exists: true, isVerified: true }));
+                return;
+              }
+
+              // Clean stale unverified signup
+              try {
+                await serverClient.auth.admin.deleteUser(existingUser.id);
+                console.log(`[DevAPI check-email] Cleaned stale unverified user ${existingUser.id}`);
+              } catch (delErr: any) {
+                console.warn("[DevAPI check-email] Delete failed:", delErr.message);
+              }
+
+              res.setHeader("Content-Type", "application/json");
+              res.statusCode = 200;
+              res.end(JSON.stringify({ exists: false, isVerified: false, wasCleaned: true }));
             } catch (err: any) {
               res.setHeader("Content-Type", "application/json");
-              res.statusCode = 500;
-              res.end(JSON.stringify({ error: err?.message || "Internal server error" }));
+              res.statusCode = 200;
+              res.end(JSON.stringify({ exists: false, isVerified: false }));
             }
           });
           return;
         }
+
 
         // GET /api/products
         if (url.startsWith("/api/products") && req.method === "GET") {

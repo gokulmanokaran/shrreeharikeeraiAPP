@@ -1,29 +1,18 @@
 import { Link } from "react-router-dom";
 import type { ReactNode, HTMLAttributes } from "react";
-import logoImg from "../../assets/logo.png";
 
 export function AuthLayout({
   title,
-  subtitle,
   children,
 }: {
   title: string;
-  subtitle?: string;
   children: ReactNode;
 }) {
   return (
     <div className="min-h-dvh bg-[#F5FCF8] flex flex-col">
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-10">
-        <Link to="/login" className="mb-6 bg-white rounded-[16px] p-2.5 shadow-sm border border-[#EAEAEA]">
-          <img src={logoImg} alt="Shree Hari Keerai" className="h-9 w-auto object-contain" />
-        </Link>
         <div className="w-full max-w-[420px] bg-white rounded-[20px] border border-[#EAEAEA] shadow-sm p-5 sm:p-6">
-          <p className="text-[11px] font-bold text-[#00A651] tracking-widest uppercase mb-1.5">
-            Shree Hari Keerai
-          </p>
-          <h1 className="text-xl font-black text-[#111111] mb-1">{title}</h1>
-          {subtitle && <p className="text-sm text-[#666666] mb-5">{subtitle}</p>}
-          {!subtitle && <div className="mb-5" />}
+          <h1 className="text-xl font-black text-[#111111] mb-5">{title}</h1>
           {children}
         </div>
         <p className="mt-6 text-[11px] text-[#888888] text-center max-w-sm leading-relaxed">
