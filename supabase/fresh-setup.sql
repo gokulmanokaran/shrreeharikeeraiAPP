@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
     razorpay_signature  TEXT,
 
     -- Customer details
+    user_id     UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     full_name   TEXT NOT NULL DEFAULT '',
     mobile      TEXT NOT NULL DEFAULT '',
     email       TEXT DEFAULT '',
@@ -148,33 +149,41 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_razorpay_payment_id
     WHERE razorpay_payment_id IS NOT NULL AND razorpay_payment_id <> '';
 
 -- Performance indexes
-CREATE INDEX IF NOT EXISTS idx_orders_created_at      ON public.orders(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_orders_email           ON public.orders(email);
-CREATE INDEX IF NOT EXISTS idx_orders_mobile          ON public.orders(mobile);
-CREATE INDEX IF NOT EXISTS idx_orders_sheets_synced   ON public.orders(sheets_synced) WHERE sheets_synced = false;
+CREATE INDEX IF NOT EXISTS idx_orders_user_id          ON public.orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_created_at       ON public.orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_email            ON public.orders(lower(email));
+CREATE INDEX IF NOT EXISTS idx_orders_mobile           ON public.orders(mobile);
+CREATE INDEX IF NOT EXISTS idx_orders_sheets_synced    ON public.orders(sheets_synced) WHERE sheets_synced = false;
 
 -- Enable RLS for Orders
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
+-- Drop insecure legacy policies
+DROP POLICY IF EXISTS "Allow public select on orders" ON public.orders;
+DROP POLICY IF EXISTS "Allow public update on orders" ON public.orders;
 DROP POLICY IF EXISTS "Allow public insert on orders" ON public.orders;
-CREATE POLICY "Allow public insert on orders"
+DROP POLICY IF EXISTS "Customers can view own orders" ON public.orders;
+DROP POLICY IF EXISTS "Allow customers to insert own orders" ON public.orders;
+
+-- Strict SELECT Policy: Customers can ONLY view orders belonging to their own user_id or verified email
+CREATE POLICY "Customers can view own orders"
+ON public.orders FOR SELECT
+TO authenticated
+USING (
+    (user_id IS NOT NULL AND auth.uid() = user_id)
+    OR
+    (email IS NOT NULL AND email <> '' AND lower(email) = lower(auth.jwt()->>'email'))
+);
+
+-- Strict INSERT Policy: Authenticated users can insert orders for themselves; anonymous guests can insert checkout orders
+CREATE POLICY "Allow customers to insert own orders"
 ON public.orders FOR INSERT
 TO anon, authenticated, service_role
-WITH CHECK (true);
+WITH CHECK (
+    (auth.uid() IS NULL) OR (user_id IS NULL) OR (user_id = auth.uid())
+);
 
-DROP POLICY IF EXISTS "Allow public select on orders" ON public.orders;
-CREATE POLICY "Allow public select on orders"
-ON public.orders FOR SELECT
-TO anon, authenticated, service_role
-USING (true);
-
-DROP POLICY IF EXISTS "Allow public update on orders" ON public.orders;
-CREATE POLICY "Allow public update on orders"
-ON public.orders FOR UPDATE
-TO anon, authenticated, service_role
-USING (true)
-WITH CHECK (true);
-
+-- Service Role (Backend API & Admin Panel) Full Access Policy
 DROP POLICY IF EXISTS "Service role full access on orders" ON public.orders;
 CREATE POLICY "Service role full access on orders"
 ON public.orders FOR ALL

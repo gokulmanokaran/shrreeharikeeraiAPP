@@ -25,8 +25,8 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import crypto from "crypto";
-import { handleCors, parseApiRequest, sendApiResponse } from "./_catalog";
-import { getSupabaseServerClient } from "./_supabase";
+import { handleCors, parseApiRequest, sendApiResponse } from "./_catalog.js";
+import { getSupabaseServerClient } from "./_supabase.js";
 
 // ── Webhook Signature Verification ───────────────────────────────────────────
 
@@ -303,33 +303,33 @@ export default async function handler(req: any, res?: any): Promise<any> {
 
     // Persist minimal record to Supabase for tracking
     if (supabase && fallbackOrderId) {
-      await supabase
-        .from("orders")
-        .insert({
-          id: fallbackOrderId,
-          razorpay_payment_id: razorpayPaymentId,
-          razorpay_order_id: razorpayOrderId,
-          full_name: gasPayload.fullName as string,
-          mobile: gasPayload.mobile as string,
-          email: gasPayload.email as string,
-          address: gasPayload.address as string,
-          subtotal: amountInRupees,
-          delivery_charge: 0,
-          discount: 0,
-          total: amountInRupees,
-          items: [],
-          payment_status: gasPayload.paymentStatus as string,
-          sheets_synced: false,
-          email_sent: false,
-          source: "razorpay-webhook-fallback",
-        })
-        .then(() => {/* inserted */})
-        .catch((err) => {
-          // Unique constraint = already exists, safe to ignore
-          if (!String(err?.message).includes("duplicate")) {
-            console.warn("[razorpay-webhook] Fallback Supabase insert error:", err);
-          }
-        });
+      try {
+        await supabase
+          .from("orders")
+          .insert({
+            id: fallbackOrderId,
+            razorpay_payment_id: razorpayPaymentId,
+            razorpay_order_id: razorpayOrderId,
+            full_name: gasPayload.fullName as string,
+            mobile: gasPayload.mobile as string,
+            email: gasPayload.email as string,
+            address: gasPayload.address as string,
+            subtotal: amountInRupees,
+            delivery_charge: 0,
+            discount: 0,
+            total: amountInRupees,
+            items: [],
+            payment_status: gasPayload.paymentStatus as string,
+            sheets_synced: false,
+            email_sent: false,
+            source: "razorpay-webhook-fallback",
+          });
+      } catch (err: unknown) {
+        // Unique constraint = already exists, safe to ignore
+        if (!String((err as any)?.message).includes("duplicate")) {
+          console.warn("[razorpay-webhook] Fallback Supabase insert error:", err);
+        }
+      }
     }
   }
 
@@ -340,19 +340,22 @@ export default async function handler(req: any, res?: any): Promise<any> {
   if (supabase && (storefrontOrderId || existingOrder?.id)) {
     const targetId = storefrontOrderId || existingOrder?.id;
     const currentRetryCount = existingOrder?.retry_count || 0;
-    await supabase
-      .from("orders")
-      .update({
-        razorpay_payment_id: razorpayPaymentId,
-        razorpay_order_id: razorpayOrderId,
-        sheets_synced: gasResult.success,
-        email_sent: gasResult.success,
-        retry_count: currentRetryCount + gasResult.attempts,
-        last_error: gasResult.success ? null : (gasResult.lastError ?? null),
-        last_attempt_at: new Date().toISOString(),
-      })
-      .eq("id", targetId)
-      .catch((err) => console.warn("[razorpay-webhook] Status update error:", err));
+    try {
+      await supabase
+        .from("orders")
+        .update({
+          razorpay_payment_id: razorpayPaymentId,
+          razorpay_order_id: razorpayOrderId,
+          sheets_synced: gasResult.success,
+          email_sent: gasResult.success,
+          retry_count: currentRetryCount + gasResult.attempts,
+          last_error: gasResult.success ? null : (gasResult.lastError ?? null),
+          last_attempt_at: new Date().toISOString(),
+        })
+        .eq("id", targetId);
+    } catch (err: unknown) {
+      console.warn("[razorpay-webhook] Status update error:", err);
+    }
   }
 
   // ── 8. Log outcome ────────────────────────────────────────────────────────

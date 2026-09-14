@@ -18,41 +18,62 @@ interface OrderRow {
 }
 
 export default function OrdersPage() {
-  const { profile, user } = useAuth();
+  const { profile, user, initializing } = useAuth();
   const navigate = useNavigate();
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const email = profile?.email || user?.email || "";
-  const mobile = profile?.mobile || String(user?.user_metadata?.mobile || "");
+  const email = (profile?.email || user?.email || "").trim().toLowerCase();
+  const userId = user?.id || profile?.id || "";
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      if (initializing) return;
+
       const supabase = getSupabaseClient();
-      if (!supabase || (!email && !mobile)) {
+      if (!supabase || (!userId && !email)) {
         setLoading(false);
+        setOrders([]);
         return;
       }
-      let query = supabase.from("orders").select("id, created_at, total, payment_status, items, address, city").order("created_at", { ascending: false }).limit(50);
-      if (email && mobile) {
-        query = query.or(`email.eq.${email},mobile.eq.${mobile}`);
-      } else if (email) {
-        query = query.eq("email", email);
-      } else {
-        query = query.eq("mobile", mobile);
-      }
-      const { data } = await query;
-      if (!cancelled) {
-        setOrders((data as OrderRow[]) || []);
-        setLoading(false);
+
+      try {
+        let query = supabase
+          .from("orders")
+          .select("id, created_at, total, payment_status, items, address, city")
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        if (userId && email) {
+          query = query.or(`user_id.eq.${userId},email.ilike.${email}`);
+        } else if (userId) {
+          query = query.eq("user_id", userId);
+        } else {
+          query = query.ilike("email", email);
+        }
+
+        const { data, error } = await query;
+        if (!cancelled) {
+          if (!error && data) {
+            setOrders(data as OrderRow[]);
+          } else {
+            setOrders([]);
+          }
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setOrders([]);
+          setLoading(false);
+        }
       }
     }
     load();
     return () => {
       cancelled = true;
     };
-  }, [email, mobile]);
+  }, [userId, email, initializing]);
 
   return (
     <>
@@ -61,9 +82,18 @@ export default function OrdersPage() {
         <h1 className="text-xl font-black text-[#111111] mb-1">My Orders</h1>
         <p className="text-sm text-[#666666] mb-5">Orders placed with this account.</p>
 
-        {loading ? (
+        {loading || initializing ? (
           <div className="flex justify-center py-16">
             <div className="w-10 h-10 rounded-full border-3 border-[#EAF8F0] border-t-[#00A651] animate-spin" />
+          </div>
+        ) : !userId && !email ? (
+          <div className="bg-white rounded-[20px] border border-[#EAEAEA] p-8 text-center">
+            <Package size={32} className="mx-auto text-[#00A651] mb-3" />
+            <p className="text-sm font-bold text-[#111111] mb-1">Please Sign In</p>
+            <p className="text-xs text-[#666666] mb-4">Sign in with your account to view your past orders and deliveries.</p>
+            <Button variant="primary" size="md" onClick={() => navigate("/login?returnTo=/orders")}>
+              Sign In
+            </Button>
           </div>
         ) : orders.length === 0 ? (
           <div className="bg-white rounded-[20px] border border-[#EAEAEA] p-8 text-center">

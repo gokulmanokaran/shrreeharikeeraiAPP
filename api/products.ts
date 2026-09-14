@@ -1,7 +1,7 @@
 // Vercel Serverless Function: /api/products
 // Central Product API for Website, Separate Admin Panel, and Future Android App.
+import type { Product } from "./_catalog.js";
 import {
-  Product,
   getCloudProducts,
   saveCloudProducts,
   validateAdminAuth,
@@ -9,7 +9,7 @@ import {
   handleCors,
   parseApiRequest,
   sendApiResponse,
-} from "./_catalog";
+} from "./_catalog.js";
 
 export default async function handler(req: any, res?: any): Promise<any> {
   // Handle CORS preflight

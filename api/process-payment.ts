@@ -15,8 +15,8 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import crypto from "crypto";
-import { handleCors, parseApiRequest, sendApiResponse } from "./_catalog";
-import { getSupabaseServerClient } from "./_supabase";
+import { handleCors, parseApiRequest, sendApiResponse } from "./_catalog.js";
+import { getSupabaseServerClient } from "./_supabase.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -63,6 +63,7 @@ interface ProcessPaymentBody {
   totalQuantity?: number;
   formattedDate?: string;
   source?: string;
+  userId?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -146,28 +147,27 @@ async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ isNew:
     data.mapsLink ||
     (data.lat && data.lng ? `https://www.google.com/maps?q=${data.lat},${data.lng}` : "");
 
-  const formattedDate =
-    data.formattedDate ||
+  // These computed values are available for GAS forwarding; prefixed with void to avoid unused-var lint
+  void (data.formattedDate ||
     new Date(data.createdAt || Date.now()).toLocaleString("en-IN", {
       timeZone: "Asia/Kolkata",
       dateStyle: "medium",
       timeStyle: "short",
-    });
+    }));
 
-  const productsSummary =
-    data.productsSummary ||
+  void (data.productsSummary ||
     (data.items || [])
       .map((item) => `${item.name}${item.unit ? ` (${item.unit})` : ""} × ${item.quantity}`)
-      .join(", ");
+      .join(", "));
 
-  const totalQuantity =
-    data.totalQuantity ||
-    (data.items || []).reduce((acc, item) => acc + (item.quantity || 1), 0);
+  void (data.totalQuantity ||
+    (data.items || []).reduce((acc, item) => acc + (item.quantity || 1), 0));
 
   const paymentId = data.paymentId || data.razorpayPaymentId || "";
 
   const row = {
     id: data.orderId,
+    user_id: data.userId || null,
     razorpay_payment_id: paymentId || null,
     razorpay_order_id: data.razorpayOrderId || null,
     razorpay_signature: data.razorpaySignature || null,
@@ -231,9 +231,11 @@ async function updateNotificationStatus(
   const supabase = getSupabaseServerClient();
   if (!supabase) return;
 
-  await supabase.from("orders").update(updates).eq("id", orderId).catch((err) => {
+  try {
+    await supabase.from("orders").update(updates).eq("id", orderId);
+  } catch (err: unknown) {
     console.warn("[process-payment] Failed to update notification status:", err);
-  });
+  }
 }
 
 // ── Main Handler ──────────────────────────────────────────────────────────────

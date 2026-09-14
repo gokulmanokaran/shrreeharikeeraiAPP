@@ -257,6 +257,7 @@ export default function CheckoutPage() {
 
     const pendingOrder = {
       orderId,
+      userId: user?.id || profile?.id || undefined,
       total,
       subtotal,
       discount: discount.amount,

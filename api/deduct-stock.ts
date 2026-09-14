@@ -5,7 +5,7 @@ import {
   parseApiRequest,
   sendApiResponse,
   deductCatalogStock,
-} from "./_catalog";
+} from "./_catalog.js";
 
 export interface DeductItemInput {
   id: string;

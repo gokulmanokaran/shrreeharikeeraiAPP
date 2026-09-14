@@ -5,8 +5,8 @@
 //   • Idempotency check via Supabase orders table
 //   • Structured logging of all attempts
 // ──────────────────────────────────────────────────────────────────────────────
-import { handleCors, parseApiRequest, sendApiResponse } from "./_catalog";
-import { getSupabaseServerClient } from "./_supabase";
+import { handleCors, parseApiRequest, sendApiResponse } from "./_catalog.js";
+import { getSupabaseServerClient } from "./_supabase.js";
 
 /** Forward to GAS with retry + exponential backoff */
 async function forwardWithRetry(
@@ -118,13 +118,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
         orderData.mapsLink ||
         (orderData.lat && orderData.lng ? `https://www.google.com/maps?q=${orderData.lat},${orderData.lng}` : "");
 
-      const formattedDate =
-        orderData.formattedDate ||
-        new Date(orderData.createdAt || Date.now()).toLocaleString("en-IN", {
-          timeZone: "Asia/Kolkata",
-          dateStyle: "medium",
-          timeStyle: "short",
-        });
+      // formattedDate intentionally omitted from Supabase row (used only for GAS payload)
 
       const orderRow = {
         id: orderId,
@@ -155,10 +149,11 @@ export default async function handler(req: any, res?: any): Promise<any> {
         source: orderData.source || "storefront",
       };
 
-      await supabase
-        .from("orders")
-        .upsert(orderRow, { onConflict: "id" })
-        .catch((err) => console.warn("[order-webhook] Supabase order upsert error:", err));
+      try {
+        await supabase.from("orders").upsert(orderRow, { onConflict: "id" });
+      } catch (err: unknown) {
+        console.warn("[order-webhook] Supabase order upsert error:", err);
+      }
     }
 
     if (result.success) {

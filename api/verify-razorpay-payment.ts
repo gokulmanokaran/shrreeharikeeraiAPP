@@ -1,7 +1,7 @@
 // Vercel Serverless Function: /api/verify-razorpay-payment
 // Verifies Razorpay payment signature using HMAC SHA256 and RAZORPAY_KEY_SECRET.
 import crypto from "crypto";
-import { handleCors, parseApiRequest, sendApiResponse } from "./_catalog";
+import { handleCors, parseApiRequest, sendApiResponse } from "./_catalog.js";
 
 export default async function handler(req: any, res?: any): Promise<any> {
   if (handleCors(req, res)) {

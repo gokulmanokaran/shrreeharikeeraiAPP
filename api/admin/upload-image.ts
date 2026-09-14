@@ -5,7 +5,7 @@ import {
   parseApiRequest,
   sendApiResponse,
   validateAdminAuth,
-} from "../_catalog";
+} from "../_catalog.js";
 
 export default async function handler(req: any, res?: any): Promise<any> {
   if (handleCors(req, res)) {
@@ -81,7 +81,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
           });
 
           if (imgbbRes.ok) {
-            const imgbbJson = await imgbbRes.json();
+            const imgbbJson = await imgbbRes.json() as any;
             if (imgbbJson.data?.url) {
               return sendApiResponse(res, 200, {
                 success: true,

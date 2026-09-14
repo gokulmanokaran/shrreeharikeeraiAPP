@@ -93,6 +93,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(null);
         setUser(null);
         setProfile(null);
+        try {
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("shreehari_orders");
+            localStorage.removeItem("shreehari_latest_order");
+            localStorage.removeItem("shreehari_guest_details");
+            localStorage.removeItem("shreehari_pending_order");
+            localStorage.removeItem("shreehari_submitted_order_ids");
+            sessionStorage.removeItem("shreehari_pending_order");
+          }
+        } catch {}
       }
     });
 
@@ -109,16 +119,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
   }, []);
 
+  const refreshProfile = useCallback(async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const { data } = await supabase.auth.getUser();
+    const latestUser = data?.user ?? user;
+    if (latestUser) {
+      setUser(latestUser);
+      await loadProfile(latestUser);
+    }
+  }, [user, loadProfile]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       session,
       profile,
       initializing,
-      refreshProfile: () => loadProfile(user),
+      refreshProfile,
       logout,
     }),
-    [user, session, profile, initializing, loadProfile, logout]
+    [user, session, profile, initializing, refreshProfile, loadProfile, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

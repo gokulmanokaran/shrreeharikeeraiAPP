@@ -5,7 +5,7 @@ import {
   handleCors,
   parseApiRequest,
   sendApiResponse,
-} from "../_catalog";
+} from "../_catalog.js";
 
 export default async function handler(req: any, res?: any): Promise<any> {
   if (handleCors(req, res)) {

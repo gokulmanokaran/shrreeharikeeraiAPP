@@ -1,6 +1,6 @@
 // Vercel Serverless Function: /api/create-razorpay-order
 // Creates a Razorpay Order securely using RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.
-import { handleCors, parseApiRequest, sendApiResponse } from "./_catalog";
+import { handleCors, parseApiRequest, sendApiResponse } from "./_catalog.js";
 
 export default async function handler(req: any, res?: any): Promise<any> {
   if (handleCors(req, res)) {
@@ -50,7 +50,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
       });
     }
 
-    const orderData = await razorpayResponse.json();
+    const orderData = await razorpayResponse.json() as any;
 
     return sendApiResponse(res, 200, {
       configured: true,

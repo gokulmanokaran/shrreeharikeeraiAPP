@@ -4,7 +4,7 @@
 
 import fs from "fs";
 import path from "path";
-import { getSupabaseServerClient } from "./_supabase";
+import { getSupabaseServerClient } from "./_supabase.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface ProductVariant {

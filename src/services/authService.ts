@@ -144,11 +144,22 @@ export async function upsertProfile(profile: CustomerProfile): Promise<{ error?:
       },
       { onConflict: "id" }
     );
-    if (error && !/could not find|does not exist|schema cache/i.test(error.message)) {
+    if (error) {
+      // Only silently ignore schema-cache / missing table errors (e.g. during initial setup)
+      if (/could not find|does not exist|schema cache/i.test(error.message)) {
+        console.warn("[upsertProfile] Schema/table not ready:", error.message);
+        return {};
+      }
+      // Unique constraint on mobile
+      if (/unique|duplicate|already exists/i.test(error.message) && /mobile/i.test(error.message)) {
+        return { error: "This mobile number is already registered with another account." };
+      }
+      console.error("[upsertProfile] DB error:", error.message);
       return { error: error.message };
     }
-  } catch {
-    /* ignore if schema not yet created */
+  } catch (e: any) {
+    console.error("[upsertProfile] Exception:", e?.message || e);
+    return { error: e?.message || "Failed to save profile." };
   }
   return {};
 }
@@ -546,6 +557,7 @@ export async function updateCustomerProfile(input: {
     return { error: "Please log in again to update your profile." };
   }
 
+  // 1. Update auth user metadata (full_name stored in user_metadata)
   const authPayload: { email?: string; data: { full_name: string; mobile?: string } } = {
     data: { full_name: fullName, mobile },
   };
@@ -553,15 +565,30 @@ export async function updateCustomerProfile(input: {
     authPayload.email = email;
   }
   try {
-    await supabase.auth.updateUser(authPayload);
-  } catch {}
+    const { error: authErr } = await supabase.auth.updateUser(authPayload);
+    if (authErr) {
+      console.warn("[updateCustomerProfile] auth.updateUser error:", authErr.message);
+      // Non-fatal: still try to update the profiles table
+    }
+  } catch (e) {
+    console.warn("[updateCustomerProfile] auth.updateUser exception:", e);
+  }
 
-  return await upsertProfile({
+  // 2. Upsert profiles table row
+  const profileResult = await upsertProfile({
     id: user.id,
     fullName,
     email,
     mobile,
   });
+
+  if (profileResult.error) {
+    console.error("[updateCustomerProfile] upsertProfile error:", profileResult.error);
+    return profileResult;
+  }
+
+  console.info("[updateCustomerProfile] Profile updated successfully for", user.id);
+  return {};
 }
 
 export async function logoutCustomer(): Promise<void> {
@@ -571,5 +598,21 @@ export async function logoutCustomer(): Promise<void> {
       await supabase.auth.signOut();
     } catch {}
   }
+
+  // Thoroughly clear all customer-specific data from localStorage and sessionStorage
+  // so the next customer on the same browser/device cannot see prior user data
+  try {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("shreehari_orders");
+      localStorage.removeItem("shreehari_latest_order");
+      localStorage.removeItem("shreehari_guest_details");
+      localStorage.removeItem("shreehari_pending_order");
+      localStorage.removeItem("shreehari_submitted_order_ids");
+      sessionStorage.removeItem("shreehari_pending_order");
+    }
+  } catch (err) {
+    console.warn("[authService] Failed to clear client storage on logout:", err);
+  }
 }
+
 

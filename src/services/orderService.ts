@@ -31,6 +31,7 @@ export interface OrderItemPayload {
 
 export interface OrderNotificationPayload {
   orderId: string;
+  userId?: string;
   createdAt: string;
   fullName: string;
   mobile: string;
@@ -293,6 +294,7 @@ export async function persistOrderDirectToSupabase(
 
     const row = {
       id: payload.orderId,
+      user_id: payload.userId || null,
       razorpay_payment_id: paymentId || null,
       razorpay_order_id: payload.razorpayOrderId || null,
       razorpay_signature: payload.razorpaySignature || null,
