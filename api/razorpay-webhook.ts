@@ -31,8 +31,16 @@ import { getSupabaseServerClient } from "./_supabase.js";
 // ── Webhook Signature Verification ───────────────────────────────────────────
 
 function verifyWebhookSignature(rawBody: string, signature: string, secret: string): boolean {
-  const generated = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(generated), Buffer.from(signature));
+  if (!signature || typeof signature !== "string") return false;
+  try {
+    const generated = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+    const genBuf = Buffer.from(generated);
+    const sigBuf = Buffer.from(signature);
+    if (genBuf.length !== sigBuf.length) return false;
+    return crypto.timingSafeEqual(genBuf, sigBuf);
+  } catch {
+    return false;
+  }
 }
 
 // ── GAS Forward with Retry ────────────────────────────────────────────────────

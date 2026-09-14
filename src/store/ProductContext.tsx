@@ -5,6 +5,7 @@ import React, {
   useState,
   useCallback,
   useMemo,
+  useRef,
 } from "react";
 import { Product, PRODUCTS } from "../data/products";
 import { Category, CATEGORIES } from "../data/categories";
@@ -39,8 +40,15 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
-  // Background synchronization from Supabase Database
+  const isSyncingRef = useRef(false);
+  const lastSyncTimeRef = useRef(0);
+  const realtimeDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Background synchronization from Supabase Database with deduplication
   const syncCatalog = useCallback(async (isInitial = false) => {
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
+
     if (isInitial) setIsLoading(false);
     setIsSyncing(true);
 
@@ -56,10 +64,13 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
       if (liveCats && liveCats.length > 0) {
         setCategories(liveCats);
       }
-      setLastSyncedAt(new Date());
+      const now = new Date();
+      setLastSyncedAt(now);
+      lastSyncTimeRef.current = now.getTime();
     } catch (err) {
       console.warn("[ProductContext] Sync error:", err);
     } finally {
+      isSyncingRef.current = false;
       setIsSyncing(false);
     }
   }, []);
@@ -81,10 +92,19 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
     syncCatalog(true);
   }, [syncCatalog]);
 
-  // Supabase Realtime live subscription
+  // Supabase Realtime live subscription with debounce to protect against update bursts
   useEffect(() => {
     const supabase = getSupabaseClient();
     if (!supabase) return;
+
+    const triggerDebouncedSync = () => {
+      if (realtimeDebounceTimerRef.current) {
+        clearTimeout(realtimeDebounceTimerRef.current);
+      }
+      realtimeDebounceTimerRef.current = setTimeout(() => {
+        syncCatalog(false);
+      }, 600);
+    };
 
     const channel = supabase
       .channel("storefront-realtime-catalog")
@@ -92,30 +112,34 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
         "postgres_changes",
         { event: "*", schema: "public", table: "products" },
         () => {
-          console.info("[Realtime] Product change detected in Supabase. Refreshing storefront...");
-          syncCatalog(false);
+          triggerDebouncedSync();
         }
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "categories" },
         () => {
-          console.info("[Realtime] Category change detected in Supabase. Refreshing storefront...");
-          syncCatalog(false);
+          triggerDebouncedSync();
         }
       )
       .subscribe();
 
     return () => {
+      if (realtimeDebounceTimerRef.current) {
+        clearTimeout(realtimeDebounceTimerRef.current);
+      }
       supabase.removeChannel(channel);
     };
   }, [syncCatalog]);
 
-  // Auto re-sync when tab gains focus / visibility or periodically
+  // Auto re-sync when tab gains focus / visibility, throttled to max once every 30s
   useEffect(() => {
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === "visible") {
-        syncCatalog(false);
+        const elapsed = Date.now() - lastSyncTimeRef.current;
+        if (elapsed > 30000) {
+          syncCatalog(false);
+        }
       }
     };
 
@@ -124,7 +148,10 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
 
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") {
-        syncCatalog(false);
+        const elapsed = Date.now() - lastSyncTimeRef.current;
+        if (elapsed > 60000) {
+          syncCatalog(false);
+        }
       }
     }, 60000);
 

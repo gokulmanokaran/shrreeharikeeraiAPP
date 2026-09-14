@@ -6,6 +6,7 @@ import {
   sendApiResponse,
   validateAdminAuth,
 } from "../_catalog.js";
+import { getSupabaseServerClient } from "../_supabase.js";
 
 export default async function handler(req: any, res?: any): Promise<any> {
   if (handleCors(req, res)) {
@@ -66,7 +67,52 @@ export default async function handler(req: any, res?: any): Promise<any> {
         });
       }
 
-      // Check if ImgBB API Key is configured for cloud upload
+      // 3a. Supabase Storage upload (persisted directly on project's own product storage bucket)
+      const supabase = getSupabaseServerClient();
+      if (supabase) {
+        try {
+          const match = image.match(/^data:(image\/[a-zA-Z0-9.+_-]+);base64,(.+)$/);
+          if (match) {
+            const mimeType = match[1];
+            const rawBase64 = match[2];
+            const ext = mimeType.split("/")[1] || "png";
+            const buffer = Buffer.from(rawBase64, "base64");
+            const safeName = (imageName || `${productId || "prod"}_${Date.now()}`)
+              .replace(/[^a-zA-Z0-9_-]/g, "_")
+              .slice(0, 50);
+            const fileName = `${safeName}_${Date.now()}.${ext}`;
+            const filePath = `catalog/${fileName}`;
+
+            const { error: uploadErr } = await supabase.storage
+              .from("products")
+              .upload(filePath, buffer, {
+                contentType: mimeType,
+                upsert: true,
+              });
+
+            if (!uploadErr) {
+              const { data: publicUrlData } = supabase.storage
+                .from("products")
+                .getPublicUrl(filePath);
+
+              if (publicUrlData?.publicUrl) {
+                return sendApiResponse(res, 200, {
+                  success: true,
+                  imageUrl: publicUrlData.publicUrl,
+                  verified: true,
+                  provider: "supabase",
+                  fileName,
+                  message: "Image uploaded to Supabase Storage successfully.",
+                });
+              }
+            }
+          }
+        } catch (storageErr) {
+          console.warn("[UploadImage] Supabase Storage upload error, trying fallback:", storageErr);
+        }
+      }
+
+      // 3b. Check if ImgBB API Key is configured for cloud upload
       const imgbbKey = process.env.IMGBB_API_KEY;
       if (imgbbKey) {
         try {
@@ -97,7 +143,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
         }
       }
 
-      // Direct Data URI fallback (instantly viewable on web and mobile)
+      // 3c. Direct Data URI fallback (instantly viewable on web and mobile)
       return sendApiResponse(res, 200, {
         success: true,
         imageUrl: image,

@@ -303,6 +303,7 @@ export async function deductLiveProductStock(
   }
 
   // 2. Call Central Serverless API
+  let apiDeducted = false;
   try {
     const res = await fetch("/api/deduct-stock", {
       method: "POST",
@@ -310,19 +311,23 @@ export async function deductLiveProductStock(
       body: JSON.stringify({ items: validItems }),
     });
     if (res.ok) {
+      apiDeducted = true;
       console.info("[ProductService] Central API stock deduction confirmed.");
     }
   } catch (err) {
     console.warn("[ProductService] Stock deduction API call warning:", err);
   }
 
-  // 3. Directly call Supabase RPC if client is initialized
-  const supabase = getSupabaseClient();
-  if (supabase) {
-    try {
-      await supabase.rpc("deduct_product_stock", { p_items: validItems });
-    } catch (err) {
-      console.warn("[ProductService] Supabase RPC direct call warning:", err);
+  // 3. Fallback: Only call Supabase RPC directly if the Central API was unreachable
+  if (!apiDeducted) {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        await supabase.rpc("deduct_product_stock", { p_items: validItems });
+        console.info("[ProductService] Direct Supabase RPC stock deduction fallback succeeded.");
+      } catch (err) {
+        console.warn("[ProductService] Supabase RPC direct call warning:", err);
+      }
     }
   }
 }

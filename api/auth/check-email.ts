@@ -23,10 +23,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ exists: false, isVerified: false });
     }
 
-    const { data, error } = await serverClient.auth.admin.listUsers();
+    // Fast indexed lookup on profiles table first
+    const { data: profileMatch } = await serverClient
+      .from("profiles")
+      .select("id, email")
+      .ilike("email", cleanEmail)
+      .maybeSingle();
+
+    if (profileMatch && (checkOnly || action === "forgot-password")) {
+      return res.status(200).json({ exists: true, isVerified: true });
+    }
+
+    const { data, error } = await serverClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
     if (error) {
       console.warn("[check-email] listUsers error:", error.message);
-      return res.status(200).json({ exists: false, isVerified: false });
+      return res.status(200).json({ exists: Boolean(profileMatch), isVerified: Boolean(profileMatch) });
     }
 
     const existingUser = (data?.users || []).find(

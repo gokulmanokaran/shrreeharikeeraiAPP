@@ -95,6 +95,9 @@ function mapDbCategory(row: any): Category {
 // ─── In-memory Cache ─────────────────────────────────────────────────────────
 let _cachedProducts: Product[] = [];
 let _cachedCategories: Category[] = [];
+let _productsLastFetched = 0;
+let _categoriesLastFetched = 0;
+const CATALOG_CACHE_TTL_MS = 15_000; // 15s in-memory cache TTL for warm lambda instances
 
 // ─── Storage Persistence Adapter ──────────────────────────────────────────────
 export interface StorageStatus {
@@ -120,7 +123,12 @@ function loadFallbackCatalog(): { products: Product[]; categories: Category[] } 
   return { products: [], categories: [] };
 }
 
-export async function getCloudProducts(): Promise<Product[]> {
+export async function getCloudProducts(forceRefresh = false): Promise<Product[]> {
+  const now = Date.now();
+  if (!forceRefresh && _cachedProducts.length > 0 && now - _productsLastFetched < CATALOG_CACHE_TTL_MS) {
+    return _cachedProducts;
+  }
+
   const supabase = getSupabaseServerClient();
   if (supabase) {
     try {
@@ -131,6 +139,7 @@ export async function getCloudProducts(): Promise<Product[]> {
 
       if (!error && Array.isArray(data) && data.length > 0) {
         _cachedProducts = data.map(mapDbProduct);
+        _productsLastFetched = Date.now();
         return _cachedProducts;
       }
     } catch (err) {
@@ -142,13 +151,19 @@ export async function getCloudProducts(): Promise<Product[]> {
     const fallback = loadFallbackCatalog();
     if (fallback.products.length > 0) {
       _cachedProducts = fallback.products;
+      _productsLastFetched = Date.now();
     }
   }
 
   return _cachedProducts;
 }
 
-export async function getCloudCategories(): Promise<Category[]> {
+export async function getCloudCategories(forceRefresh = false): Promise<Category[]> {
+  const now = Date.now();
+  if (!forceRefresh && _cachedCategories.length > 0 && now - _categoriesLastFetched < CATALOG_CACHE_TTL_MS) {
+    return _cachedCategories;
+  }
+
   const supabase = getSupabaseServerClient();
   if (supabase) {
     try {
@@ -159,6 +174,7 @@ export async function getCloudCategories(): Promise<Category[]> {
 
       if (!error && Array.isArray(data) && data.length > 0) {
         _cachedCategories = data.map(mapDbCategory);
+        _categoriesLastFetched = Date.now();
         return _cachedCategories;
       }
     } catch (err) {
@@ -170,6 +186,7 @@ export async function getCloudCategories(): Promise<Category[]> {
     const fallback = loadFallbackCatalog();
     if (fallback.categories.length > 0) {
       _cachedCategories = fallback.categories;
+      _categoriesLastFetched = Date.now();
     }
   }
 
@@ -178,6 +195,7 @@ export async function getCloudCategories(): Promise<Category[]> {
 
 export async function saveCloudProducts(products: Product[]): Promise<StorageStatus> {
   _cachedProducts = products;
+  _productsLastFetched = Date.now();
   const supabase = getSupabaseServerClient();
 
   if (supabase) {
@@ -222,6 +240,7 @@ export async function saveCloudProducts(products: Product[]): Promise<StorageSta
 
 export async function saveCloudCategories(categories: Category[]): Promise<StorageStatus> {
   _cachedCategories = categories;
+  _categoriesLastFetched = Date.now();
   const supabase = getSupabaseServerClient();
 
   if (supabase) {
@@ -264,7 +283,7 @@ export async function deductCatalogStock(
       });
 
       if (!rpcError && rpcData && rpcData.success) {
-        await getCloudProducts();
+        await getCloudProducts(true);
         return rpcData;
       }
       if (rpcError) {
@@ -305,7 +324,7 @@ export async function deductCatalogStock(
           });
         }
       }
-      await getCloudProducts();
+      await getCloudProducts(true);
       return { success: true, updated: updatedItems };
     } catch (err) {
       console.warn("[CatalogEngine] Supabase direct deduction fallback exception:", err);

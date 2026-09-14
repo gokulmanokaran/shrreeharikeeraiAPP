@@ -135,12 +135,28 @@ async function callGoogleAppsScript(
   return { success: false, attempts: maxAttempts, lastError };
 }
 
-/** Upsert order into Supabase orders table. Returns true if this is a NEW order. */
-async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ isNew: boolean; error?: string }> {
+/** Upsert order into Supabase orders table. Returns true if this order was ALREADY completely processed/synced. */
+async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ alreadyProcessed: boolean; error?: string }> {
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     console.warn("[process-payment] Supabase client not available — order not persisted to DB.");
-    return { isNew: true }; // Allow processing to continue even without DB
+    return { alreadyProcessed: false }; // Allow processing to continue even without DB
+  }
+
+  // 1. Check if the order was already inserted AND fully synced (Google Sheets + Email)
+  try {
+    const { data: existing } = await supabase
+      .from("orders")
+      .select("id, sheets_synced, email_sent")
+      .eq("id", data.orderId)
+      .maybeSingle();
+
+    if (existing?.sheets_synced && existing?.email_sent) {
+      console.info(`[process-payment] Order ${data.orderId} already exists in DB and was fully synced.`);
+      return { alreadyProcessed: true };
+    }
+  } catch (checkErr) {
+    console.warn("[process-payment] Supabase check error:", checkErr);
   }
 
   const mapsLink =
@@ -191,30 +207,20 @@ async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ isNew:
     email_sent: false,
     retry_count: 0,
     source: data.source || "storefront",
-    // Store these for GAS forward
-    // (extra metadata stored as part of JSONB items — no separate column needed)
   };
 
-  // Use INSERT ... ON CONFLICT DO NOTHING to detect duplicates safely
-  const { error, data: insertedRows } = await supabase
+  // Upsert order row (safe against race conditions with client-side persist)
+  const { error } = await supabase
     .from("orders")
-    .insert(row)
-    .select("id")
-    .maybeSingle();
+    .upsert(row, { onConflict: "id" });
 
   if (error) {
-    // Unique constraint violation = duplicate order (already processed)
-    if (error.code === "23505" || error.message?.includes("duplicate")) {
-      console.info(`[process-payment] Order ${data.orderId} already exists in DB — duplicate detected.`);
-      return { isNew: false };
-    }
-    console.error("[process-payment] Supabase insert error:", error);
-    return { isNew: true, error: error.message };
+    console.error("[process-payment] Supabase upsert error:", error);
+    return { alreadyProcessed: false, error: error.message };
   }
 
-  const isNew = !!insertedRows;
-  console.info(`[process-payment] Order ${data.orderId} ${isNew ? "inserted" : "already existed"} in Supabase.`);
-  return { isNew };
+  console.info(`[process-payment] Order ${data.orderId} successfully persisted/upserted in Supabase.`);
+  return { alreadyProcessed: false };
 }
 
 /** Update notification status flags in Supabase */
@@ -283,9 +289,9 @@ export default async function handler(req: any, res?: any): Promise<any> {
   }
 
   // ── 2. Upsert order to Supabase (durable persistence, idempotency) ────────
-  const { isNew, error: dbError } = await upsertOrderToSupabase(data);
+  const { alreadyProcessed, error: dbError } = await upsertOrderToSupabase(data);
 
-  if (!isNew) {
+  if (alreadyProcessed) {
     // Already processed — return success without re-triggering downstream
     console.info(`[process-payment] ℹ️ Order ${orderId} already processed. Returning cached success.`);
     return sendApiResponse(res, 200, {
