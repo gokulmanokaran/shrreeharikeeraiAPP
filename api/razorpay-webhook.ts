@@ -106,6 +106,11 @@ interface RazorpayWebhookPayload {
         contact?: string;
         email?: string;
         notes?: Record<string, string>;
+        method?: string;
+        vpa?: string;
+        bank?: string;
+        wallet?: string;
+        card?: any;
         created_at?: number;
       };
     };
@@ -239,6 +244,18 @@ export default async function handler(req: any, res?: any): Promise<any> {
 
   const processedAt = new Date().toISOString();
 
+  const rawMethod = String(paymentEntity?.method || "").toLowerCase();
+  let methodLabel = "GPay";
+  if (rawMethod === "card") methodLabel = "Card";
+  else if (rawMethod === "netbanking") methodLabel = "NetBanking";
+  else if (rawMethod === "wallet") methodLabel = "Wallet";
+  else if (rawMethod === "upi") {
+    const vpa = String(paymentEntity?.vpa || "").toLowerCase();
+    if (vpa.includes("ybl") || vpa.includes("ibl") || vpa.includes("phonepe")) methodLabel = "PhonePe";
+    else if (vpa.includes("paytm")) methodLabel = "Paytm";
+    else methodLabel = "GPay";
+  }
+
   let gasPayload: Record<string, unknown>;
 
   if (existingOrder) {
@@ -261,7 +278,9 @@ export default async function handler(req: any, res?: any): Promise<any> {
     });
 
     const isPaid = String(existingOrder.payment_status || "").toLowerCase().includes("paid");
-    const newPaymentStatus = isPaid ? existingOrder.payment_status : `Paid (Razorpay) · ${razorpayPaymentId}`;
+    const newPaymentStatus = (isPaid && !existingOrder.payment_status?.includes("Razorpay"))
+      ? existingOrder.payment_status
+      : `Paid (${methodLabel}) · ${razorpayPaymentId}`;
 
     gasPayload = {
       orderId: storefrontOrderId || existingOrder.id,
@@ -356,7 +375,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
       paymentId: razorpayPaymentId,
       razorpayPaymentId,
       razorpayOrderId,
-      paymentStatus: `Paid (Razorpay) · ${razorpayPaymentId}`,
+      paymentStatus: `Paid (${methodLabel}) · ${razorpayPaymentId}`,
       formattedDate,
       source: "razorpay-webhook-fallback",
       _webhookTriggered: true,

@@ -30,6 +30,38 @@ import { deductLiveProductStock } from "../services/productService";
 
 const PENDING_ORDER_KEY = "shreehari_pending_order";
 
+export type PaymentMethodOption = "gpay" | "card" | "netbanking" | "wallet";
+
+export const paymentMethodDetails: Record<
+  PaymentMethodOption,
+  { label: string; title: string; subtitle: string; rzpMethod: string }
+> = {
+  gpay: {
+    label: "UPI / GPay",
+    title: "GPay",
+    subtitle: "Google Pay, PhonePe, Paytm, BHIM UPI",
+    rzpMethod: "upi",
+  },
+  card: {
+    label: "Cards",
+    title: "Card",
+    subtitle: "Visa, Mastercard, RuPay & Maestro",
+    rzpMethod: "card",
+  },
+  netbanking: {
+    label: "NetBanking",
+    title: "NetBanking",
+    subtitle: "HDFC, SBI, ICICI, Axis & All Banks",
+    rzpMethod: "netbanking",
+  },
+  wallet: {
+    label: "Wallets",
+    title: "Wallet",
+    subtitle: "Paytm, Mobikwik & Wallets",
+    rzpMethod: "wallet",
+  },
+};
+
 export default function PaymentPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -38,6 +70,7 @@ export default function PaymentPage() {
   const { deliveryCharge } = useDelivery();
   const { refreshProducts } = useProductCatalog();
 
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethodOption>("gpay");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -112,6 +145,7 @@ export default function PaymentPage() {
     setErrorMessage(null);
 
     try {
+      const methodInfo = paymentMethodDetails[selectedMethod] || paymentMethodDetails.gpay;
       const paymentResult = await processPayment({
         orderId,
         amount: total,
@@ -121,6 +155,7 @@ export default function PaymentPage() {
         customerPhone: mobile,
         description: `Shree Hari Keerai — Order #${orderId}`,
         userId: currentUserId,
+        preferredMethod: methodInfo.rzpMethod,
         onPaymentFailed: (errorMsg) => {
           // Update message in UI without blocking retry inside or outside modal
           setErrorMessage(errorMsg);
@@ -145,7 +180,7 @@ export default function PaymentPage() {
         ...pendingOrder,
         userId: currentUserId,
         email: email || user?.email || profile?.email || "",
-        paymentStatus: `Paid (Razorpay)${razorpayPaymentId ? ` · ${razorpayPaymentId}` : ""}`,
+        paymentStatus: `Paid (${methodInfo.title})${razorpayPaymentId ? ` · ${razorpayPaymentId}` : ""}`,
         paymentId: razorpayPaymentId,
         razorpayPaymentId,
         razorpayOrderId,
@@ -315,8 +350,8 @@ export default function PaymentPage() {
           </div>
 
           <div className="p-4 flex flex-col gap-3">
-            {/* Razorpay Online Option (Default Active) */}
-            <div className="border-2 border-[#00A651] bg-[#F5FCF8] rounded-[16px] p-4 relative cursor-pointer">
+            {/* Razorpay Online Option with Method Selector */}
+            <div className="border-2 border-[#00A651] bg-[#F5FCF8] rounded-[16px] p-4 relative">
               <div className="flex items-start justify-between gap-3 mb-2.5">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-full bg-[#00A651] text-white flex items-center justify-center flex-shrink-0 shadow-sm">
@@ -324,36 +359,47 @@ export default function PaymentPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-black text-[#111111]">
-                      Online Payment (Razorpay)
+                      Pay via {paymentMethodDetails[selectedMethod].title}
                     </h3>
                     <p className="text-[11px] text-[#666666]">
-                      UPI, Cards, NetBanking, & Wallets
+                      {paymentMethodDetails[selectedMethod].subtitle}
                     </p>
                   </div>
                 </div>
                 <span className="bg-[#00A651] text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full">
-                  FASTEST
+                  SELECTED
                 </span>
               </div>
 
-              {/* Supported Payment Badges */}
+              {/* Supported Payment Badges (Clickable Selectors) */}
               <div className="grid grid-cols-4 gap-2 pt-2 border-t border-[#00A651]/15">
-                <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-white border border-[#E0F2E9] text-center">
-                  <Smartphone size={16} className="text-[#00A651] mb-1" />
-                  <span className="text-[10px] font-bold text-[#333333]">UPI / GPay</span>
-                </div>
-                <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-white border border-[#E0F2E9] text-center">
-                  <CreditCard size={16} className="text-[#00A651] mb-1" />
-                  <span className="text-[10px] font-bold text-[#333333]">Cards</span>
-                </div>
-                <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-white border border-[#E0F2E9] text-center">
-                  <Building2 size={16} className="text-[#00A651] mb-1" />
-                  <span className="text-[10px] font-bold text-[#333333]">NetBanking</span>
-                </div>
-                <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-white border border-[#E0F2E9] text-center">
-                  <Wallet size={16} className="text-[#00A651] mb-1" />
-                  <span className="text-[10px] font-bold text-[#333333]">Wallets</span>
-                </div>
+                {(
+                  [
+                    { key: "gpay", Icon: Smartphone, label: "UPI / GPay" },
+                    { key: "card", Icon: CreditCard, label: "Cards" },
+                    { key: "netbanking", Icon: Building2, label: "NetBanking" },
+                    { key: "wallet", Icon: Wallet, label: "Wallets" },
+                  ] as const
+                ).map(({ key, Icon, label }) => {
+                  const isSelected = selectedMethod === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSelectedMethod(key)}
+                      className={`flex flex-col items-center justify-center p-2 rounded-xl text-center transition-all cursor-pointer ${
+                        isSelected
+                          ? "bg-[#00A651] text-white shadow-sm ring-2 ring-[#00A651]/30 font-black scale-[1.02]"
+                          : "bg-white border border-[#E0F2E9] text-[#333333] hover:border-[#00A651]/50 hover:bg-[#F9FAF9]"
+                      }`}
+                    >
+                      <Icon size={16} className={isSelected ? "text-white mb-1" : "text-[#00A651] mb-1"} />
+                      <span className={`text-[10px] ${isSelected ? "font-black text-white" : "font-bold text-[#333333]"}`}>
+                        {label}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -505,7 +551,7 @@ export default function PaymentPage() {
                 ? "Saving order…"
                 : isProcessing
                 ? "Opening Gateway…"
-                : `Pay ₹${total} Securely`}
+                : `Pay ₹${total} via ${paymentMethodDetails[selectedMethod].title}`}
             </span>
           </Button>
 

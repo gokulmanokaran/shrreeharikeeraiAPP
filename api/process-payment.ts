@@ -289,7 +289,7 @@ async function upsertOrderToSupabase(
     discount: Number(data.discount || 0),
     total: Number(data.total || 0),
     items: data.items || [],
-    payment_status: data.paymentStatus || `Paid (Razorpay)${paymentId ? ` · ${paymentId}` : ""}`,
+    payment_status: data.paymentStatus || `Paid (GPay)${paymentId ? ` · ${paymentId}` : ""}`,
     sheets_synced: existingOrderRow?.sheets_synced ?? false,
     email_sent: existingOrderRow?.email_sent ?? false,
     retry_count: existingOrderRow?.retry_count ?? 0,

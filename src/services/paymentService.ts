@@ -24,6 +24,7 @@ export interface PaymentPayload {
   customerPhone: string;
   description: string;
   userId?: string;
+  preferredMethod?: string;
   onPaymentFailed?: (errorMsg: string) => void;
 }
 
@@ -245,12 +246,14 @@ export async function processPayment(payload: PaymentPayload): Promise<PaymentRe
         name: payload.customerName,
         email: payload.customerEmail || undefined,
         contact: payload.customerPhone,
+        ...(payload.preferredMethod ? { method: payload.preferredMethod } : {}),
       },
       notes: {
         storefrontOrderId: payload.orderId,
         userId: payload.userId || "",
         customerEmail: payload.customerEmail || "",
         customerPhone: payload.customerPhone || "",
+        paymentMethod: payload.preferredMethod || "upi",
       },
       theme: {
         color: "#00A651",

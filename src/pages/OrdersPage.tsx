@@ -19,9 +19,19 @@ interface OrderRow {
 
 function formatPaymentStatus(status?: string): string {
   if (!status) return "Paid";
-  if (status.startsWith("pay_")) return "Paid";
-  const clean = status.split(" · ")[0].trim();
-  return clean.replace(/pay_[a-zA-Z0-9_]+/gi, "").trim() || "Paid";
+  if (status.startsWith("pay_")) return "Paid (GPay)";
+
+  // Extract main status part before transaction ID or dot separator
+  let clean = status.split(" · ")[0].trim();
+
+  // Replace any Razorpay mention with GPay (e.g. Paid (Razorpay) -> Paid (GPay))
+  if (/razorpay/i.test(clean)) {
+    clean = clean.replace(/razorpay/gi, "GPay");
+  }
+
+  // Remove any leftover transaction IDs
+  const withoutPay = clean.replace(/pay_[a-zA-Z0-9_]+/gi, "").trim();
+  return withoutPay || "Paid (GPay)";
 }
 
 export default function OrdersPage() {
@@ -83,7 +93,7 @@ export default function OrdersPage() {
                       id: loId,
                       created_at: lo.createdAt || lo.created_at || new Date().toISOString(),
                       total: Number(lo.total || 0),
-                      payment_status: lo.paymentStatus || lo.payment_status || "Paid (Razorpay)",
+                      payment_status: lo.paymentStatus || lo.payment_status || "Paid (GPay)",
                       items: lo.items || [],
                       address: lo.address,
                       city: lo.city,
