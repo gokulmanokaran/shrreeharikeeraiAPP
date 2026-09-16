@@ -23,6 +23,8 @@ export interface PaymentPayload {
   customerEmail?: string;
   customerPhone: string;
   description: string;
+  userId?: string;
+  onPaymentFailed?: (errorMsg: string) => void;
 }
 
 export interface PaymentResult {
@@ -116,27 +118,11 @@ export function getRazorpayKeyId(): string {
 
 /**
  * Detects whether the current page is running inside an Android WebView.
- *
- * Razorpay's UPI Intent flow (upi:// / intent:// scheme) requires explicit
- * opt-in via `webview_intent: true` + `config.supports_upi_intent: 1` so
- * that the SDK knows the host environment can handle deep-link interception.
- *
- * Detection heuristics (all must match for a reliable positive):
- *  1. User-Agent contains "wv" token (Android System WebView marker)
- *  2. User-Agent contains "Android" — rules out desktop Chrome "wv" false-positives
- *  3. NOT a standard browser (no "Chrome/" without "wv", no "Firefox", no "Safari" alone)
- *
- * NOTE: This detection runs only on the client; SSR environments return false.
  */
 export function isAndroidWebView(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
-  // Android WebView UA always contains both "Android" and the " wv" token
-  // e.g.: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 ... wv) ..."
-  return (
-    ua.includes("Android") &&
-    /\bwv\b/.test(ua)
-  );
+  return ua.includes("Android") && /\bwv\b/.test(ua);
 }
 
 /**
@@ -180,31 +166,41 @@ export function loadRazorpayScript(): Promise<boolean> {
 }
 
 /**
- * Optional server-side Razorpay Order Creator (used if backend endpoint is configured)
+ * Server-side Razorpay Order Creator (creates official order_... on Razorpay server)
  */
-async function createBackendRazorpayOrder(amount: number, orderId: string): Promise<string | undefined> {
-  // Only attempt if explicit backend endpoint is enabled
-  if (typeof window === "undefined" || !import.meta.env.VITE_ENABLE_BACKEND_RAZORPAY) {
-    return undefined;
-  }
+async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<string | undefined> {
+  if (typeof window === "undefined") return undefined;
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 800);
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
 
     const res = await fetch("/api/create-razorpay-order", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount, receipt: orderId }),
+      body: JSON.stringify({
+        amount: payload.amount,
+        receipt: payload.orderId,
+        currency: payload.currency || "INR",
+        notes: {
+          storefrontOrderId: payload.orderId,
+          userId: payload.userId || "",
+          customerEmail: payload.customerEmail || "",
+          customerPhone: payload.customerPhone || "",
+        },
+      }),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
     if (res.ok) {
       const data = await res.json();
-      return data.orderId || undefined;
+      if (data.orderId) {
+        console.info(`[PaymentService] ✅ Created Razorpay server order: ${data.orderId}`);
+        return data.orderId;
+      }
     }
-  } catch {
-    // Proceed with standard direct Razorpay client checkout
+  } catch (e) {
+    console.warn("[PaymentService] Server-side Razorpay order creation skipped/timed out; using standard client checkout:", e);
   }
   return undefined;
 }
@@ -229,18 +225,14 @@ export async function processPayment(payload: PaymentPayload): Promise<PaymentRe
     };
   }
 
-  // Attempt backend order generation if available (non-blocking fallback)
-  const backendOrderId = await createBackendRazorpayOrder(payload.amount, payload.orderId);
+  // Attempt backend order generation with notes
+  const backendOrderId = await createBackendRazorpayOrder(payload);
 
-  // ── Android WebView UPI Intent configuration ───────────────────────────
-  // When running inside an Android WebView we must explicitly enable UPI
-  // Intent support so that Razorpay renders the UPI app picker and
-  // launches GPay / PhonePe / Paytm via upi:// or intent:// deep links.
-  // The Android host app must handle these schemes in shouldOverrideUrlLoading.
   const androidWebView = isAndroidWebView();
 
   return new Promise((resolve) => {
-    let isHandled = false;
+    let isCompleted = false;
+    let lastFailureReason: string | null = null;
 
     const options: RazorpayOptions = {
       key: razorpayKey,
@@ -256,15 +248,13 @@ export async function processPayment(payload: PaymentPayload): Promise<PaymentRe
       },
       notes: {
         storefrontOrderId: payload.orderId,
+        userId: payload.userId || "",
+        customerEmail: payload.customerEmail || "",
+        customerPhone: payload.customerPhone || "",
       },
       theme: {
         color: "#00A651",
       },
-      // ── UPI Intent: enabled only in Android WebView ──────────────────────
-      // webview_intent: true  → Razorpay renders UPI app picker in WebView
-      // config.supports_upi_intent: 1 → SDK uses intent:// / upi:// scheme
-      // These flags are safe to omit for browser (no-op) and are only
-      // injected when the Android WebView UA is positively detected.
       ...(androidWebView
         ? {
             webview_intent: true,
@@ -274,17 +264,19 @@ export async function processPayment(payload: PaymentPayload): Promise<PaymentRe
           }
         : {}),
       handler: async (response: RazorpaySuccessResponse) => {
-        if (isHandled) return;
-        isHandled = true;
+        if (isCompleted) return;
+        isCompleted = true;
 
-        // Optional server-side verification if enabled
-        if (import.meta.env.VITE_ENABLE_BACKEND_RAZORPAY) {
+        console.info("[PaymentService] ✅ Razorpay success handler invoked:", response.razorpay_payment_id);
+
+        // Optional server-side verification if signature is present
+        if (response.razorpay_order_id && response.razorpay_signature) {
           try {
             const verifyRes = await fetch("/api/verify-razorpay-payment", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id || backendOrderId,
+                razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
               }),
@@ -292,6 +284,7 @@ export async function processPayment(payload: PaymentPayload): Promise<PaymentRe
             if (verifyRes.ok) {
               const verifyData = await verifyRes.json();
               if (verifyData.verified === false) {
+                console.error("[PaymentService] ❌ Server verification failed for payment", response.razorpay_payment_id);
                 resolve({
                   success: false,
                   error: "Payment verification failed. Please contact support.",
@@ -300,7 +293,7 @@ export async function processPayment(payload: PaymentPayload): Promise<PaymentRe
               }
             }
           } catch {
-            // Fallback: Proceed with Razorpay client confirmation
+            // Fallback: Proceed with Razorpay client confirmation; backend /api/process-payment will re-verify
           }
         }
 
@@ -313,11 +306,12 @@ export async function processPayment(payload: PaymentPayload): Promise<PaymentRe
       },
       modal: {
         ondismiss: () => {
-          if (isHandled) return;
-          isHandled = true;
+          if (isCompleted) return;
+          isCompleted = true;
+          console.info("[PaymentService] ℹ️ Razorpay modal dismissed/closed by user.");
           resolve({
             success: false,
-            error: "Payment was cancelled. You can retry when ready.",
+            error: lastFailureReason || "Payment was cancelled or closed. You can retry when ready.",
           });
         },
       },
@@ -334,23 +328,26 @@ export async function processPayment(payload: PaymentPayload): Promise<PaymentRe
 
       const rzp = new window.Razorpay(options);
 
+      // Listen for failed transaction attempts inside the modal
       rzp.on("payment.failed", (response: RazorpayFailureResponse) => {
-        if (isHandled) return;
-        isHandled = true;
         const errorMsg =
           response.error?.description ||
           response.error?.reason ||
-          "Payment failed. Please try a different payment method.";
-        resolve({
-          success: false,
-          error: errorMsg,
-        });
+          "Payment attempt failed. Please try a different payment method or retry.";
+        console.warn("[PaymentService] ⚠️ Payment attempt failed inside modal:", errorMsg);
+        lastFailureReason = errorMsg;
+
+        // Notify UI without closing or terminating the session.
+        // If the customer retries inside Razorpay modal and succeeds, handler will fire!
+        if (payload.onPaymentFailed) {
+          payload.onPaymentFailed(errorMsg);
+        }
       });
 
       rzp.open();
     } catch (err) {
-      if (!isHandled) {
-        isHandled = true;
+      if (!isCompleted) {
+        isCompleted = true;
         resolve({
           success: false,
           error: err instanceof Error ? err.message : "Failed to open Razorpay modal.",

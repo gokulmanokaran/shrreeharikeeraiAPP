@@ -178,43 +178,50 @@ export default async function handler(req: any, res?: any): Promise<any> {
   // ── 4. Check Supabase for existing order record ────────────────────────────
   const supabase = getSupabaseServerClient();
   let existingOrder: any = null;
-  let sheetsAlreadySynced = false;
+  let alreadyPaidAndSynced = false;
 
-  if (supabase && storefrontOrderId) {
+  if (supabase) {
     try {
-      const { data: orderRow } = await supabase
-        .from("orders")
-        .select("id, sheets_synced, email_sent, full_name, mobile, email, address, city, state, pincode, lat, lng, maps_link, items, subtotal, delivery_charge, discount, total, payment_status, retry_count")
-        .eq("id", storefrontOrderId)
-        .maybeSingle();
+      if (storefrontOrderId) {
+        const { data: orderRow } = await supabase
+          .from("orders")
+          .select("id, user_id, sheets_synced, email_sent, full_name, mobile, email, address, city, state, pincode, lat, lng, maps_link, items, subtotal, delivery_charge, discount, total, payment_status, retry_count")
+          .eq("id", storefrontOrderId)
+          .maybeSingle();
+        if (orderRow) existingOrder = orderRow;
+      }
 
-      if (orderRow) {
-        existingOrder = orderRow;
-        sheetsAlreadySynced = orderRow.sheets_synced && orderRow.email_sent;
-        console.info(
-          `[razorpay-webhook] Found existing Supabase order ${storefrontOrderId}. SheetsSync: ${orderRow.sheets_synced}, EmailSent: ${orderRow.email_sent}`
-        );
+      if (!existingOrder && razorpayPaymentId) {
+        const { data: orderRow } = await supabase
+          .from("orders")
+          .select("id, user_id, sheets_synced, email_sent, full_name, mobile, email, address, city, state, pincode, lat, lng, maps_link, items, subtotal, delivery_charge, discount, total, payment_status, retry_count")
+          .eq("razorpay_payment_id", razorpayPaymentId)
+          .maybeSingle();
+        if (orderRow) existingOrder = orderRow;
+      }
+
+      if (existingOrder) {
+        const isPaid = String(existingOrder.payment_status || "").toLowerCase().includes("paid");
+        alreadyPaidAndSynced = isPaid && existingOrder.sheets_synced && existingOrder.email_sent;
       }
     } catch (err) {
       console.warn("[razorpay-webhook] Supabase lookup error:", err);
     }
   }
 
-  // If order is already fully processed — acknowledge and return
-  if (sheetsAlreadySynced) {
-    console.info(`[razorpay-webhook] ℹ️ Order ${storefrontOrderId} already fully processed. Idempotent response.`);
+  // If order is already fully processed and synced — acknowledge and return
+  if (alreadyPaidAndSynced) {
+    console.info(`[razorpay-webhook] ℹ️ Order ${storefrontOrderId || existingOrder?.id} already fully processed. Idempotent response.`);
     return sendApiResponse(res, 200, {
       received: true,
       event: eventType,
       processed: false,
       reason: "Already processed",
-      orderId: storefrontOrderId,
+      orderId: storefrontOrderId || existingOrder?.id,
     });
   }
 
-  // ── 5. If we don't have a Supabase order record yet, create a minimal one ──
-  // This handles the case where the browser /api/process-payment never fired
-  // (e.g. browser crashed) but Razorpay is notifying us of a captured payment.
+  // ── 5. Build order payload & persist ──────────────────────────────────────
   const webhookUrl =
     process.env.GOOGLE_SHEETS_WEBHOOK_URL ||
     process.env.VITE_ORDER_WEBHOOK_URL ||
@@ -243,6 +250,9 @@ export default async function handler(req: any, res?: any): Promise<any> {
       timeStyle: "short",
     });
 
+    const isPaid = String(existingOrder.payment_status || "").toLowerCase().includes("paid");
+    const newPaymentStatus = isPaid ? existingOrder.payment_status : `Paid (Razorpay) · ${razorpayPaymentId}`;
+
     gasPayload = {
       orderId: storefrontOrderId || existingOrder.id,
       fullName: existingOrder.full_name,
@@ -260,7 +270,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
       deliveryCharge: existingOrder.delivery_charge,
       discount: existingOrder.discount,
       total: existingOrder.total,
-      paymentStatus: existingOrder.payment_status,
+      paymentStatus: newPaymentStatus,
       paymentId: razorpayPaymentId,
       razorpayPaymentId,
       razorpayOrderId,
@@ -271,9 +281,32 @@ export default async function handler(req: any, res?: any): Promise<any> {
       _webhookTriggered: true,
       _processedAt: processedAt,
     };
+
+    // If order was not yet marked Paid, update it in Supabase
+    if (!isPaid && supabase) {
+      try {
+        await supabase
+          .from("orders")
+          .update({
+            razorpay_payment_id: razorpayPaymentId,
+            razorpay_order_id: razorpayOrderId,
+            payment_status: newPaymentStatus,
+          })
+          .eq("id", existingOrder.id);
+
+        // Deduct stock if not already done
+        const validItems = items
+          .filter((i: any) => i && i.id)
+          .map((i: any) => ({ id: String(i.id), quantity: Math.max(1, Number(i.quantity) || 1) }));
+        if (validItems.length > 0) {
+          await supabase.rpc("deduct_product_stock", { p_items: validItems });
+        }
+      } catch (updateErr) {
+        console.warn("[razorpay-webhook] Existing order update warning:", updateErr);
+      }
+    }
   } else {
     // Minimal payload from Razorpay webhook data only (browser data was lost)
-    // We only have payment amount + notes — better than nothing
     const fallbackOrderId = storefrontOrderId || `SHK-WEBHOOK-${razorpayPaymentId}`;
     const formattedDate = new Date(
       (paymentEntity.created_at || Date.now() / 1000) * 1000
@@ -282,14 +315,26 @@ export default async function handler(req: any, res?: any): Promise<any> {
     console.warn(
       `[razorpay-webhook] ⚠️ No Supabase record for storefront order ${storefrontOrderId}. ` +
       `This means the browser never called /api/process-payment. ` +
-      `Sending minimal order data to GAS from Razorpay webhook payload.`
+      `Resolving user and persisting from webhook.`
     );
+
+    const customerEmail = paymentEntity.email || notes.customerEmail || "";
+    let targetUserId = notes.userId || null;
+    if (!targetUserId && customerEmail && supabase) {
+      try {
+        const { data: userList } = await supabase.auth.admin.listUsers();
+        const matched = (userList?.users || []).find((u: any) => u.email?.toLowerCase() === customerEmail.toLowerCase().trim());
+        if (matched) targetUserId = matched.id;
+      } catch (uErr) {
+        console.warn("[razorpay-webhook] User lookup error:", uErr);
+      }
+    }
 
     gasPayload = {
       orderId: fallbackOrderId,
       fullName: paymentEntity.notes?.customerName || notes.fullName || "Unknown Customer",
       mobile: paymentEntity.contact?.replace("+91", "") || "",
-      email: paymentEntity.email || "",
+      email: customerEmail,
       address: notes.address || "See Razorpay Dashboard",
       total: amountInRupees,
       subtotal: amountInRupees,
@@ -309,13 +354,14 @@ export default async function handler(req: any, res?: any): Promise<any> {
       _processedAt: processedAt,
     };
 
-    // Persist minimal record to Supabase for tracking
+    // Persist to Supabase with resolved user_id
     if (supabase && fallbackOrderId) {
       try {
         await supabase
           .from("orders")
-          .insert({
+          .upsert({
             id: fallbackOrderId,
+            user_id: targetUserId,
             razorpay_payment_id: razorpayPaymentId,
             razorpay_order_id: razorpayOrderId,
             full_name: gasPayload.fullName as string,
@@ -331,12 +377,9 @@ export default async function handler(req: any, res?: any): Promise<any> {
             sheets_synced: false,
             email_sent: false,
             source: "razorpay-webhook-fallback",
-          });
+          }, { onConflict: "id" });
       } catch (err: unknown) {
-        // Unique constraint = already exists, safe to ignore
-        if (!String((err as any)?.message).includes("duplicate")) {
-          console.warn("[razorpay-webhook] Fallback Supabase insert error:", err);
-        }
+        console.warn("[razorpay-webhook] Fallback Supabase upsert error:", err);
       }
     }
   }

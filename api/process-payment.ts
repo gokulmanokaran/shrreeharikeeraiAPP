@@ -140,23 +140,54 @@ async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ alread
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     console.warn("[process-payment] Supabase client not available — order not persisted to DB.");
-    return { alreadyProcessed: false }; // Allow processing to continue even without DB
+    return { alreadyProcessed: false };
   }
 
-  // 1. Check if the order was already inserted AND fully synced (Google Sheets + Email)
+  const paymentId = data.paymentId || data.razorpayPaymentId || "";
+
+  // 1. Check if this order or payment was ALREADY processed
   try {
-    const { data: existing } = await supabase
+    const { data: existingById } = await supabase
       .from("orders")
-      .select("id, sheets_synced, email_sent")
+      .select("id, user_id, payment_status, sheets_synced, email_sent")
       .eq("id", data.orderId)
       .maybeSingle();
 
-    if (existing?.sheets_synced && existing?.email_sent) {
-      console.info(`[process-payment] Order ${data.orderId} already exists in DB and was fully synced.`);
+    if (existingById && existingById.payment_status && existingById.payment_status.toLowerCase().includes("paid")) {
+      console.info(`[process-payment] Order ${data.orderId} already exists in DB and is marked as paid.`);
       return { alreadyProcessed: true };
     }
+
+    if (paymentId) {
+      const { data: existingByPayment } = await supabase
+        .from("orders")
+        .select("id, user_id, payment_status, sheets_synced, email_sent")
+        .eq("razorpay_payment_id", paymentId)
+        .maybeSingle();
+
+      if (existingByPayment && existingByPayment.payment_status && existingByPayment.payment_status.toLowerCase().includes("paid")) {
+        console.info(`[process-payment] Payment ${paymentId} was already processed under order ${existingByPayment.id}.`);
+        return { alreadyProcessed: true };
+      }
+    }
   } catch (checkErr) {
-    console.warn("[process-payment] Supabase check error:", checkErr);
+    console.warn("[process-payment] Supabase idempotency check error:", checkErr);
+  }
+
+  // 2. Resolve target user_id (from payload, or lookup registered user by email)
+  let targetUserId = data.userId || null;
+  if (!targetUserId && data.email) {
+    try {
+      const cleanEmail = data.email.trim().toLowerCase();
+      const { data: userList } = await supabase.auth.admin.listUsers();
+      const matched = (userList?.users || []).find((u: any) => u.email?.toLowerCase() === cleanEmail);
+      if (matched) {
+        targetUserId = matched.id;
+        console.info(`[process-payment] 🔗 Associated order ${data.orderId} with registered user ${targetUserId} (${cleanEmail}).`);
+      }
+    } catch (userLookupErr) {
+      console.warn("[process-payment] Failed to lookup user by email:", userLookupErr);
+    }
   }
 
   const mapsLink =
@@ -179,17 +210,15 @@ async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ alread
   void (data.totalQuantity ||
     (data.items || []).reduce((acc, item) => acc + (item.quantity || 1), 0));
 
-  const paymentId = data.paymentId || data.razorpayPaymentId || "";
-
   const row = {
     id: data.orderId,
-    user_id: data.userId || null,
+    user_id: targetUserId,
     razorpay_payment_id: paymentId || null,
     razorpay_order_id: data.razorpayOrderId || null,
     razorpay_signature: data.razorpaySignature || null,
     full_name: data.fullName || "",
     mobile: data.mobile || "",
-    email: data.email || "",
+    email: (data.email || "").trim(),
     address: data.address || "",
     city: data.city || "",
     state: data.state || "",
@@ -209,7 +238,7 @@ async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ alread
     source: data.source || "storefront",
   };
 
-  // Upsert order row (safe against race conditions with client-side persist)
+  // 3. Upsert order row (using server service_role key to bypass customer RLS restrictions)
   const { error } = await supabase
     .from("orders")
     .upsert(row, { onConflict: "id" });
@@ -217,6 +246,22 @@ async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ alread
   if (error) {
     console.error("[process-payment] Supabase upsert error:", error);
     return { alreadyProcessed: false, error: error.message };
+  }
+
+  // 4. Server-side stock deduction (deduct once upon successful paid order)
+  try {
+    const validItems = (data.items || [])
+      .filter((item) => item && item.id)
+      .map((item) => ({
+        id: String(item.id),
+        quantity: Math.max(1, Number(item.quantity) || 1),
+      }));
+    if (validItems.length > 0) {
+      await supabase.rpc("deduct_product_stock", { p_items: validItems });
+      console.info(`[process-payment] ✅ Atomic stock deduction executed for order ${data.orderId}.`);
+    }
+  } catch (stockErr) {
+    console.warn("[process-payment] Stock deduction RPC warning:", stockErr);
   }
 
   console.info(`[process-payment] Order ${data.orderId} successfully persisted/upserted in Supabase.`);

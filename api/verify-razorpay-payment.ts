@@ -40,7 +40,9 @@ export default async function handler(req: any, res?: any): Promise<any> {
         .update(`${razorpay_order_id}|${razorpay_payment_id}`)
         .digest("hex");
 
-      const isValid = generatedSignature === razorpay_signature;
+      const genBuf = Buffer.from(generatedSignature);
+      const sigBuf = Buffer.from(String(razorpay_signature));
+      const isValid = genBuf.length === sigBuf.length && crypto.timingSafeEqual(genBuf, sigBuf);
 
       return sendApiResponse(res, isValid ? 200 : 400, { verified: isValid });
     }

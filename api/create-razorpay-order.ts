@@ -14,7 +14,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
   }
 
   try {
-    const { amount, receipt, currency = "INR" } = body || {};
+    const { amount, receipt, currency = "INR", notes } = body || {};
 
     const keyId = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || "rzp_test_TU0lWbkyOmj5C5";
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -39,6 +39,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
         currency,
         receipt: String(receipt || `rcpt_${Date.now()}`),
         payment_capture: 1,
+        ...(notes && typeof notes === "object" ? { notes } : {}),
       }),
     });
 

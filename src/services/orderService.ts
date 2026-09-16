@@ -320,17 +320,22 @@ export async function persistOrderDirectToSupabase(
       source: "storefront",
     };
 
-    const { error } = await supabase.from("orders").upsert(row, { onConflict: "id" });
+    // Use insert instead of upsert: customer RLS permits INSERT, but UPSERT triggers UPDATE checks (42501)
+    const { error } = await supabase.from("orders").insert(row);
     if (error) {
-      console.warn("[OrderService] Direct Supabase upsert error:", error.message);
+      if (error.code === "23505" || error.message?.includes("duplicate") || error.message?.includes("already exists")) {
+        console.info(`[OrderService] Order ${payload.orderId} already persisted in Supabase.`);
+        return { success: true };
+      }
+      console.warn("[OrderService] Direct Supabase insert notice:", error.message);
       return { success: false, error: error.message };
     }
 
-    console.info(`[OrderService] ⚡ Direct Supabase upsert succeeded for order ${payload.orderId}`);
+    console.info(`[OrderService] ⚡ Direct Supabase insert succeeded for order ${payload.orderId}`);
     return { success: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn("[OrderService] Direct Supabase upsert exception:", msg);
+    console.warn("[OrderService] Direct Supabase insert exception:", msg);
     return { success: false, error: msg };
   }
 }

@@ -22,6 +22,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useCart } from "../store/CartContext";
 import { useDelivery } from "../store/DeliveryContext";
 import { useProductCatalog } from "../store/ProductContext";
+import { useAuth } from "../store/AuthContext";
 import { Button } from "../components/ui/Button";
 import { processPayment } from "../services/paymentService";
 import { submitOrderNotification, type OrderNotificationPayload } from "../services/orderService";
@@ -32,6 +33,7 @@ const PENDING_ORDER_KEY = "shreehari_pending_order";
 export default function PaymentPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, profile } = useAuth();
   const { items, clearCart } = useCart();
   const { deliveryCharge } = useDelivery();
   const { refreshProducts } = useProductCatalog();
@@ -41,7 +43,6 @@ export default function PaymentPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showItems, setShowItems] = useState(false);
   const isNavigatingRef = useRef(false);
-
 
   // Retrieve pending order from navigation state or localStorage fallback
   const pendingOrder = useMemo<OrderNotificationPayload | null>(() => {
@@ -102,16 +103,13 @@ export default function PaymentPage() {
     items: orderItems,
   } = pendingOrder;
 
+  const currentUserId = user?.id || profile?.id || pendingOrder.userId;
+
   const handlePayWithRazorpay = async () => {
-    if (isProcessing) return; // Prevent duplicate triggers
+    if (isProcessing || isSaving) return; // Prevent duplicate triggers
 
     setIsProcessing(true);
     setErrorMessage(null);
-
-    // Timeout safety fallback: prevent permanent lock if popup is blocked
-    const safetyTimeout = setTimeout(() => {
-      setIsProcessing(false);
-    }, 12000);
 
     try {
       const paymentResult = await processPayment({
@@ -119,12 +117,15 @@ export default function PaymentPage() {
         amount: total,
         currency: "INR",
         customerName: fullName,
-        customerEmail: email || undefined,
+        customerEmail: email || user?.email || undefined,
         customerPhone: mobile,
         description: `Shree Hari Keerai — Order #${orderId}`,
+        userId: currentUserId,
+        onPaymentFailed: (errorMsg) => {
+          // Update message in UI without blocking retry inside or outside modal
+          setErrorMessage(errorMsg);
+        },
       });
-
-      clearTimeout(safetyTimeout);
 
       if (!paymentResult.success) {
         setIsProcessing(false);
@@ -134,7 +135,7 @@ export default function PaymentPage() {
         return;
       }
 
-      // ── Payment Succeeded ──────────────────────────────────────────────────
+      // ── Payment Succeeded (First attempt, in-modal retry, or on-page retry) ───
       isNavigatingRef.current = true;
       const razorpayPaymentId = paymentResult.razorpayPaymentId || "";
       const razorpayOrderId = paymentResult.razorpayOrderId || "";
@@ -142,6 +143,8 @@ export default function PaymentPage() {
 
       const completedOrder: OrderNotificationPayload = {
         ...pendingOrder,
+        userId: currentUserId,
+        email: email || user?.email || profile?.email || "",
         paymentStatus: `Paid (Razorpay)${razorpayPaymentId ? ` · ${razorpayPaymentId}` : ""}`,
         paymentId: razorpayPaymentId,
         razorpayPaymentId,
@@ -152,6 +155,7 @@ export default function PaymentPage() {
       // 1. Show saving state — backend is persisting to Supabase + Google Sheets
       setIsProcessing(false);
       setIsSaving(true);
+      setErrorMessage(null);
 
       // 2. Deduct stock automatically upon successful payment (non-blocking)
       deductLiveProductStock(completedOrder.items).catch(() => {});
@@ -162,9 +166,11 @@ export default function PaymentPage() {
         localStorage.setItem("shreehari_latest_order", JSON.stringify(completedOrder));
         const existingRaw = localStorage.getItem("shreehari_orders");
         const existing = existingRaw ? JSON.parse(existingRaw) : [];
+        // Prevent duplicate entries in local history
+        const filtered = existing.filter((o: any) => o.id !== completedOrder.orderId && o.orderId !== completedOrder.orderId);
         localStorage.setItem(
           "shreehari_orders",
-          JSON.stringify([completedOrder, ...existing])
+          JSON.stringify([completedOrder, ...filtered])
         );
         sessionStorage.removeItem(PENDING_ORDER_KEY);
         localStorage.removeItem(PENDING_ORDER_KEY);
@@ -173,9 +179,6 @@ export default function PaymentPage() {
       }
 
       // 4. Send to backend (Supabase + Google Sheets + Email) — AWAITED with timeout
-      // The backend persists to Supabase first (durable), then calls GAS.
-      // We give it up to 12 seconds. If it times out, the Razorpay webhook
-      // will handle it server-to-server as a safety net.
       const notificationPromise = submitOrderNotification(completedOrder);
       const timeoutPromise = new Promise<OrderNotificationPayload>((resolve) =>
         setTimeout(() => resolve(completedOrder), 12_000)
@@ -183,11 +186,11 @@ export default function PaymentPage() {
 
       const notifResult = await Promise.race([notificationPromise, timeoutPromise]);
 
-      if (typeof notifResult === "object" && "success" in notifResult) {
+      if (typeof notifResult === "object" && notifResult && "success" in notifResult) {
         if (notifResult.success) {
           console.info(`[PaymentPage] ✅ Order #${orderId} fully persisted and notified (path: ${notifResult.path}).`);
         } else {
-          console.warn(`[PaymentPage] ⚠️ Order #${orderId} queued for background retry (path: ${notifResult.path}). Razorpay webhook will also attempt.`);
+          console.warn(`[PaymentPage] ⚠️ Order #${orderId} queued for background retry (path: ${notifResult.path}).`);
         }
       } else {
         console.info(`[PaymentPage] ⏱️ Order #${orderId} notification timed out on client — backend/webhook will handle.`);
@@ -197,7 +200,6 @@ export default function PaymentPage() {
       clearCart();
       navigate("/order-success", { replace: true, state: completedOrder });
     } catch (err) {
-      clearTimeout(safetyTimeout);
       setIsProcessing(false);
       setIsSaving(false);
       setErrorMessage(

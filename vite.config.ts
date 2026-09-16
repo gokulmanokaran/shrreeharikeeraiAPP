@@ -185,50 +185,63 @@ function localDevApiPlugin(): Plugin {
           return;
         }
 
-        // POST /api/process-payment or /api/order-webhook (Local dev order handling)
+        // Helper to adapt Node http.ServerResponse for serverless handler compatibility
+        const adaptRes = (r: any) => {
+          if (!r.status) {
+            r.status = function (s: number) {
+              this.statusCode = s;
+              return this;
+            };
+          }
+          if (!r.json) {
+            r.json = function (obj: any) {
+              this.setHeader("Content-Type", "application/json");
+              this.end(JSON.stringify(obj));
+              return this;
+            };
+          }
+          return r;
+        };
+
+        // Serverless handlers for payment & order lifecycle
         if (
-          (url.startsWith("/api/process-payment") || url.startsWith("/api/order-webhook")) &&
-          req.method === "POST"
+          url.startsWith("/api/create-razorpay-order") ||
+          url.startsWith("/api/verify-razorpay-payment") ||
+          url.startsWith("/api/process-payment") ||
+          url.startsWith("/api/order-webhook") ||
+          url.startsWith("/api/razorpay-webhook")
         ) {
-          let rawBody = "";
-          req.on("data", (chunk: any) => {
-            rawBody += chunk;
-          });
-          req.on("end", async () => {
+          adaptRes(res);
+          (async () => {
             try {
-              const data = JSON.parse(rawBody || "{}");
-              const orderId = data.orderId || `SHK-${Date.now()}`;
-              console.log(`[DevAPI] 📦 Processing local order ${orderId}...`);
+              let handlerMod: any;
+              if (url.startsWith("/api/create-razorpay-order")) {
+                handlerMod = await import(pathToFileURL(path.resolve(__dirname, "api/create-razorpay-order.ts")).href);
+              } else if (url.startsWith("/api/verify-razorpay-payment")) {
+                handlerMod = await import(pathToFileURL(path.resolve(__dirname, "api/verify-razorpay-payment.ts")).href);
+              } else if (url.startsWith("/api/process-payment")) {
+                handlerMod = await import(pathToFileURL(path.resolve(__dirname, "api/process-payment.ts")).href);
+              } else if (url.startsWith("/api/order-webhook")) {
+                handlerMod = await import(pathToFileURL(path.resolve(__dirname, "api/order-webhook.ts")).href);
+              } else if (url.startsWith("/api/razorpay-webhook")) {
+                handlerMod = await import(pathToFileURL(path.resolve(__dirname, "api/razorpay-webhook.ts")).href);
+              }
 
-              // Forward to Google Apps Script
-              const webhookUrl =
-                process.env.GOOGLE_SHEETS_WEBHOOK_URL ||
-                process.env.VITE_ORDER_WEBHOOK_URL ||
-                "https://script.google.com/macros/s/AKfycbzjXsA4gHp4u30Qx9RhFamyOIrSjqs2yi9K5wAF1YylK8FU9Ushsex8kffAIIRUR3bI/exec";
-
-              fetch(webhookUrl, {
-                method: "POST",
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify(data),
-              }).catch((e) => console.warn("[DevAPI] GAS forward error:", e));
-
-              res.setHeader("Content-Type", "application/json");
-              res.statusCode = 200;
-              res.end(
-                JSON.stringify({
-                  success: true,
-                  orderId,
-                  message: "Local dev order processed successfully",
-                  sheetsSynced: true,
-                  emailSent: true,
-                })
-              );
+              if (handlerMod?.default) {
+                await handlerMod.default(req, res);
+              } else {
+                res.statusCode = 404;
+                res.end(JSON.stringify({ error: "Handler not found" }));
+              }
             } catch (err: any) {
-              res.setHeader("Content-Type", "application/json");
-              res.statusCode = 500;
-              res.end(JSON.stringify({ success: false, error: err?.message || "Internal error" }));
+              console.error("[DevAPI Error]:", err);
+              if (!res.headersSent) {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: err?.message || "Internal error" }));
+              }
             }
-          });
+          })();
           return;
         }
 

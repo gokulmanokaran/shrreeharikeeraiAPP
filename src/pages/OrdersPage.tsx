@@ -55,11 +55,41 @@ export default function OrdersPage() {
 
         const { data, error } = await query;
         if (!cancelled) {
-          if (!error && data) {
-            setOrders(data as OrderRow[]);
-          } else {
-            setOrders([]);
+          let list: OrderRow[] = !error && data ? (data as OrderRow[]) : [];
+
+          // Seamless immediate visibility fallback for the active customer account
+          try {
+            const rawLocal = localStorage.getItem("shreehari_orders");
+            if (rawLocal) {
+              const localOrders = JSON.parse(rawLocal);
+              if (Array.isArray(localOrders)) {
+                for (const lo of localOrders) {
+                  const loId = lo.id || lo.orderId;
+                  const loEmail = String(lo.email || "").trim().toLowerCase();
+                  const loUserId = lo.userId || lo.user_id;
+                  const matchesUser =
+                    (userId && loUserId === userId) ||
+                    (email && loEmail === email);
+
+                  if (matchesUser && loId && !list.some((existing) => existing.id === loId)) {
+                    list.unshift({
+                      id: loId,
+                      created_at: lo.createdAt || lo.created_at || new Date().toISOString(),
+                      total: Number(lo.total || 0),
+                      payment_status: lo.paymentStatus || lo.payment_status || "Paid (Razorpay)",
+                      items: lo.items || [],
+                      address: lo.address,
+                      city: lo.city,
+                    });
+                  }
+                }
+              }
+            }
+          } catch {
+            /* ignore fallback parse issues */
           }
+
+          setOrders(list);
           setLoading(false);
         }
       } catch {
