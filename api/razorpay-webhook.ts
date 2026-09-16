@@ -49,24 +49,34 @@ async function forwardToGoogleAppsScript(
   webhookUrl: string,
   payload: object,
   maxAttempts = 3
-): Promise<{ success: boolean; attempts: number; lastError?: string }> {
+): Promise<{ success: boolean; attempts: number; lastError?: string; sheetUpdated?: boolean; emailSent?: boolean }> {
   let lastError = "";
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20_000);
+      const timeoutId = setTimeout(() => controller.abort(), 25_000);
       const res = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload),
         signal: controller.signal,
+        redirect: "follow",
       });
       clearTimeout(timeoutId);
 
+      const text = await res.text().catch(() => "");
+      let parsed: any = null;
+      try {
+        parsed = JSON.parse(text);
+      } catch {}
+
       if (res.ok || res.status === 302 || res.status === 0) {
-        const text = await res.text().catch(() => "");
+        const isDuplicate = Boolean(parsed?.duplicate);
+        const sheetUpdated = Boolean(parsed?.sheetUpdated) || isDuplicate || parsed?.status === "success";
+        const emailSent = Boolean(parsed?.emailSent) || Boolean(parsed?.customerEmailSent) || isDuplicate || parsed?.status === "success";
+
         console.info(`[razorpay-webhook] ✅ GAS forwarded on attempt ${attempt}.`, text.slice(0, 100));
-        return { success: true, attempts: attempt };
+        return { success: true, attempts: attempt, sheetUpdated, emailSent };
       }
       lastError = `HTTP ${res.status}`;
     } catch (err) {
@@ -397,8 +407,8 @@ export default async function handler(req: any, res?: any): Promise<any> {
         .update({
           razorpay_payment_id: razorpayPaymentId,
           razorpay_order_id: razorpayOrderId,
-          sheets_synced: gasResult.success,
-          email_sent: gasResult.success,
+          sheets_synced: gasResult.sheetUpdated || gasResult.success,
+          email_sent: gasResult.emailSent || gasResult.success,
           retry_count: currentRetryCount + gasResult.attempts,
           last_error: gasResult.success ? null : (gasResult.lastError ?? null),
           last_attempt_at: new Date().toISOString(),

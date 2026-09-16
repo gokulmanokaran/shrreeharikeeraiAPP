@@ -17,6 +17,13 @@ interface OrderRow {
   city?: string;
 }
 
+function formatPaymentStatus(status?: string): string {
+  if (!status) return "Paid";
+  if (status.startsWith("pay_")) return "Paid";
+  const clean = status.split(" · ")[0].trim();
+  return clean.replace(/pay_[a-zA-Z0-9_]+/gi, "").trim() || "Paid";
+}
+
 export default function OrdersPage() {
   const { profile, user, initializing } = useAuth();
   const navigate = useNavigate();
@@ -146,7 +153,7 @@ export default function OrdersPage() {
                     </p>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EAF8F0] text-[#087A43]">
-                    {order.payment_status || "Paid"}
+                    {formatPaymentStatus(order.payment_status)}
                   </span>
                 </div>
                 <p className="text-xs text-[#555555] mb-2">

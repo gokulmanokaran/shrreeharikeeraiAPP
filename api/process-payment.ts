@@ -5,13 +5,13 @@
 // FLOW:
 //   1. Verify Razorpay signature (if secret is configured)
 //   2. Upsert order into Supabase `orders` table (durable, idempotent)
-//   3. Forward to Google Apps Script for Sheets + Email (with retry)
+//   3. Forward to Google Apps Script for Sheets + Email (with retry & follow redirects)
 //   4. Mark sheets_synced / email_sent in Supabase
 //   5. Return success to browser
 //
 // IDEMPOTENCY:
-//   If the same razorpay_payment_id is received twice (duplicate webhook / retry),
-//   the Supabase upsert on conflict(id) is a no-op and we return alreadyProcessed: true.
+//   If the order is already in Supabase AND confirmed synced to Sheets + Email,
+//   we return alreadyProcessed: true to prevent duplicate rows and duplicate emails.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import crypto from "crypto";
@@ -81,41 +81,78 @@ function verifyRazorpaySignature(
   return generated === signature;
 }
 
+interface GasCallResult {
+  success: boolean;
+  sheetUpdated: boolean;
+  emailSent: boolean;
+  attempts: number;
+  lastError?: string;
+  responseSnippet?: string;
+}
+
 /** Call Google Apps Script webhook with exponential backoff retry */
 async function callGoogleAppsScript(
   webhookUrl: string,
   payload: object,
   maxAttempts = 3
-): Promise<{ success: boolean; attempts: number; lastError?: string }> {
+): Promise<GasCallResult> {
   let lastError = "";
+  let responseSnippet = "";
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const controller = new AbortController();
-      // Give GAS up to 20 seconds per attempt (it can be slow on cold start)
-      const timeoutId = setTimeout(() => controller.abort(), 20_000);
+      // Give GAS up to 25 seconds per attempt (it can be slow on cold start)
+      const timeoutId = setTimeout(() => controller.abort(), 25_000);
 
       const res = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload),
         signal: controller.signal,
+        redirect: "follow",
       });
       clearTimeout(timeoutId);
 
-      // GAS always returns 200 with a redirect chain ending in an opaque response.
-      // We treat any completed fetch (even non-ok) as a delivery attempt success
-      // because GAS 302 redirects make HTTP status unreliable from server side.
-      // The real success indicator is that the request reached GAS servers.
-      if (res.ok || res.status === 302 || res.status === 0) {
-        const text = await res.text().catch(() => "");
-        console.info(
-          `[process-payment] ✅ GAS call succeeded on attempt ${attempt}.`,
-          { status: res.status, responseSnippet: text.slice(0, 200) }
-        );
-        return { success: true, attempts: attempt };
+      const text = await res.text().catch(() => "");
+      responseSnippet = text.slice(0, 500);
+
+      let parsed: any = null;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // GAS may return non-JSON text or redirect HTML wrapper in some environments
       }
 
-      lastError = `HTTP ${res.status}`;
+      // If HTTP ok or redirect completed
+      if (res.ok || res.status === 302 || res.status === 0) {
+        const isDuplicate = Boolean(parsed?.duplicate);
+        // If sheet was appended OR it was already recognized as duplicate in Sheets
+        const sheetUpdated = Boolean(parsed?.sheetUpdated) || isDuplicate || parsed?.status === "success";
+        // If email was sent (customer or admin) OR it was duplicate
+        const emailSent = Boolean(parsed?.emailSent) || Boolean(parsed?.customerEmailSent) || isDuplicate || parsed?.status === "success";
+
+        console.info(
+          `[process-payment] ✅ GAS call completed on attempt ${attempt}.`,
+          {
+            status: res.status,
+            sheetUpdated,
+            emailSent,
+            duplicate: isDuplicate,
+            responseSnippet: text.slice(0, 200),
+          }
+        );
+
+        return {
+          success: true,
+          sheetUpdated,
+          emailSent,
+          attempts: attempt,
+          responseSnippet,
+        };
+      }
+
+      lastError = `HTTP ${res.status}: ${responseSnippet}`;
       console.warn(
         `[process-payment] ⚠️ GAS attempt ${attempt}/${maxAttempts} returned ${res.status}. Will retry.`
       );
@@ -132,11 +169,20 @@ async function callGoogleAppsScript(
     }
   }
 
-  return { success: false, attempts: maxAttempts, lastError };
+  return {
+    success: false,
+    sheetUpdated: false,
+    emailSent: false,
+    attempts: maxAttempts,
+    lastError,
+    responseSnippet,
+  };
 }
 
-/** Upsert order into Supabase orders table. Returns true if this order was ALREADY completely processed/synced. */
-async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ alreadyProcessed: boolean; error?: string }> {
+/** Upsert order into Supabase orders table. Returns alreadyProcessed: true ONLY if both Google Sheets & Email are confirmed synced. */
+async function upsertOrderToSupabase(
+  data: ProcessPaymentBody
+): Promise<{ alreadyProcessed: boolean; error?: string; existingOrder?: any }> {
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     console.warn("[process-payment] Supabase client not available — order not persisted to DB.");
@@ -144,38 +190,50 @@ async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ alread
   }
 
   const paymentId = data.paymentId || data.razorpayPaymentId || "";
+  let existingOrderRow: any = null;
 
-  // 1. Check if this order or payment was ALREADY processed
+  // 1. Check if this order or payment was ALREADY completely processed & synced to Sheets and Email
   try {
     const { data: existingById } = await supabase
       .from("orders")
-      .select("id, user_id, payment_status, sheets_synced, email_sent")
+      .select("id, user_id, payment_status, sheets_synced, email_sent, retry_count")
       .eq("id", data.orderId)
       .maybeSingle();
 
-    if (existingById && existingById.payment_status && existingById.payment_status.toLowerCase().includes("paid")) {
-      console.info(`[process-payment] Order ${data.orderId} already exists in DB and is marked as paid.`);
-      return { alreadyProcessed: true };
+    if (existingById) {
+      existingOrderRow = existingById;
+      const isPaid = String(existingById.payment_status || "").toLowerCase().includes("paid");
+      if (isPaid && existingById.sheets_synced && existingById.email_sent) {
+        console.info(
+          `[process-payment] ℹ️ Order ${data.orderId} already exists in DB and is fully synced (sheets_synced=true, email_sent=true). Skipping duplicate notification.`
+        );
+        return { alreadyProcessed: true, existingOrder: existingById };
+      }
     }
 
     if (paymentId) {
       const { data: existingByPayment } = await supabase
         .from("orders")
-        .select("id, user_id, payment_status, sheets_synced, email_sent")
+        .select("id, user_id, payment_status, sheets_synced, email_sent, retry_count")
         .eq("razorpay_payment_id", paymentId)
         .maybeSingle();
 
-      if (existingByPayment && existingByPayment.payment_status && existingByPayment.payment_status.toLowerCase().includes("paid")) {
-        console.info(`[process-payment] Payment ${paymentId} was already processed under order ${existingByPayment.id}.`);
-        return { alreadyProcessed: true };
+      if (existingByPayment && existingByPayment.id !== data.orderId) {
+        const isPaid = String(existingByPayment.payment_status || "").toLowerCase().includes("paid");
+        if (isPaid && existingByPayment.sheets_synced && existingByPayment.email_sent) {
+          console.info(
+            `[process-payment] ℹ️ Payment ${paymentId} was already processed under order ${existingByPayment.id} (sheets_synced=true, email_sent=true). Skipping duplicate.`
+          );
+          return { alreadyProcessed: true, existingOrder: existingByPayment };
+        }
       }
     }
   } catch (checkErr) {
     console.warn("[process-payment] Supabase idempotency check error:", checkErr);
   }
 
-  // 2. Resolve target user_id (from payload, or lookup registered user by email)
-  let targetUserId = data.userId || null;
+  // 2. Resolve target user_id (from payload, existing record, or lookup registered user by email)
+  let targetUserId = data.userId || existingOrderRow?.user_id || null;
   if (!targetUserId && data.email) {
     try {
       const cleanEmail = data.email.trim().toLowerCase();
@@ -232,9 +290,9 @@ async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ alread
     total: Number(data.total || 0),
     items: data.items || [],
     payment_status: data.paymentStatus || `Paid (Razorpay)${paymentId ? ` · ${paymentId}` : ""}`,
-    sheets_synced: false,
-    email_sent: false,
-    retry_count: 0,
+    sheets_synced: existingOrderRow?.sheets_synced ?? false,
+    email_sent: existingOrderRow?.email_sent ?? false,
+    retry_count: existingOrderRow?.retry_count ?? 0,
     source: data.source || "storefront",
   };
 
@@ -245,10 +303,10 @@ async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ alread
 
   if (error) {
     console.error("[process-payment] Supabase upsert error:", error);
-    return { alreadyProcessed: false, error: error.message };
+    return { alreadyProcessed: false, error: error.message, existingOrder: existingOrderRow };
   }
 
-  // 4. Server-side stock deduction (deduct once upon successful paid order)
+  // 4. Server-side stock deduction (deduct once upon paid order)
   try {
     const validItems = (data.items || [])
       .filter((item) => item && item.id)
@@ -256,7 +314,7 @@ async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ alread
         id: String(item.id),
         quantity: Math.max(1, Number(item.quantity) || 1),
       }));
-    if (validItems.length > 0) {
+    if (validItems.length > 0 && (!existingOrderRow || existingOrderRow.retry_count === 0)) {
       await supabase.rpc("deduct_product_stock", { p_items: validItems });
       console.info(`[process-payment] ✅ Atomic stock deduction executed for order ${data.orderId}.`);
     }
@@ -265,7 +323,7 @@ async function upsertOrderToSupabase(data: ProcessPaymentBody): Promise<{ alread
   }
 
   console.info(`[process-payment] Order ${data.orderId} successfully persisted/upserted in Supabase.`);
-  return { alreadyProcessed: false };
+  return { alreadyProcessed: false, existingOrder: existingOrderRow };
 }
 
 /** Update notification status flags in Supabase */
@@ -334,15 +392,17 @@ export default async function handler(req: any, res?: any): Promise<any> {
   }
 
   // ── 2. Upsert order to Supabase (durable persistence, idempotency) ────────
-  const { alreadyProcessed, error: dbError } = await upsertOrderToSupabase(data);
+  const { alreadyProcessed, error: dbError, existingOrder } = await upsertOrderToSupabase(data);
 
   if (alreadyProcessed) {
-    // Already processed — return success without re-triggering downstream
-    console.info(`[process-payment] ℹ️ Order ${orderId} already processed. Returning cached success.`);
+    // Both Sheets and Email were already synced — return success without duplicate delivery
+    console.info(`[process-payment] ℹ️ Order ${orderId} already processed & synced. Returning cached success.`);
     return sendApiResponse(res, 200, {
       success: true,
       orderId,
       alreadyProcessed: true,
+      sheetsSynced: true,
+      emailSent: true,
       message: "Order was already processed successfully.",
     });
   }
@@ -394,10 +454,14 @@ export default async function handler(req: any, res?: any): Promise<any> {
   const gasResult = await callGoogleAppsScript(webhookUrl, gasPayload, 3);
 
   // ── 4. Update notification status in Supabase ─────────────────────────────
+  const sheetsSynced = gasResult.sheetUpdated || gasResult.success;
+  const emailSent = gasResult.emailSent || gasResult.success;
+  const currentRetryCount = existingOrder?.retry_count || 0;
+
   await updateNotificationStatus(orderId, {
-    sheets_synced: gasResult.success,
-    email_sent: gasResult.success,
-    retry_count: gasResult.attempts,
+    sheets_synced: sheetsSynced,
+    email_sent: emailSent,
+    retry_count: currentRetryCount + gasResult.attempts,
     last_error: gasResult.success ? null : (gasResult.lastError ?? null),
     last_attempt_at: new Date().toISOString(),
   });
@@ -405,7 +469,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
   // ── 5. Log final outcome ──────────────────────────────────────────────────
   if (gasResult.success) {
     console.info(
-      `[process-payment] ✅ ORDER ${orderId} FULLY PROCESSED | Payment: ${paymentId} | Sheets: ✅ | Email: ✅ | Attempts: ${gasResult.attempts}`
+      `[process-payment] ✅ ORDER ${orderId} FULLY PROCESSED | Payment: ${paymentId} | Sheets: ${sheetsSynced ? "✅" : "⚠️"} | Email: ${emailSent ? "✅" : "⚠️"} | Attempts: ${gasResult.attempts}`
     );
   } else {
     console.error(
@@ -420,9 +484,9 @@ export default async function handler(req: any, res?: any): Promise<any> {
     success: true,
     orderId,
     alreadyProcessed: false,
-    sheetsSynced: gasResult.success,
-    emailSent: gasResult.success,
+    sheetsSynced,
+    emailSent,
     attempts: gasResult.attempts,
-    ...(gasResult.success ? {} : { warning: "Order saved. Sheet/email sync queued for retry." }),
+    ...(sheetsSynced && emailSent ? {} : { warning: "Order saved. Sheet/email sync queued for retry." }),
   });
 }
