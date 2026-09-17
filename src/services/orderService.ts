@@ -174,10 +174,10 @@ async function submitViaBackend(
   orderId: string,
   paymentId: string
 ): Promise<OrderNotificationResult | null> {
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       console.info(
-        `[OrderService] 🚀 Attempt ${attempt}/3 → /api/process-payment | Order: ${orderId} | Payment: ${paymentId}`
+        `[OrderService] 🚀 Attempt ${attempt}/2 → /api/process-payment | Order: ${orderId} | Payment: ${paymentId}`
       );
       const res = await fetchWithTimeout(
         "/api/process-payment",
@@ -187,14 +187,14 @@ async function submitViaBackend(
           body: JSON.stringify(requestBody),
           keepalive: true,
         },
-        15_000 // 15s per attempt
+        12_000 // 12s per attempt — backend now returns in ~200ms after DB save
       );
 
       if (res.ok) {
         const data = await res.json();
         const assignedOrderId = data.orderId || orderId;
         console.info(
-          `[OrderService] ✅ /api/process-payment succeeded | Order: ${assignedOrderId} | AlreadyProcessed: ${data.alreadyProcessed} | SheetsSync: ${data.sheetsSynced}`
+          `[OrderService] ✅ /api/process-payment succeeded | Order: ${assignedOrderId} | AlreadyProcessed: ${data.alreadyProcessed}`
         );
         return {
           success: true,
@@ -214,12 +214,13 @@ async function submitViaBackend(
       console.warn(`[OrderService] ⚠️ /api/process-payment attempt ${attempt} threw: ${errMsg}`);
     }
 
-    if (attempt < 3) {
-      await new Promise((r) => setTimeout(r, Math.pow(2, attempt - 1) * 1000));
+    if (attempt < 2) {
+      await new Promise((r) => setTimeout(r, 1000));
     }
   }
   return null; // All attempts failed
 }
+
 
 // ── Secondary path: POST /api/order-webhook (Vercel backend) ─────────────────
 

@@ -190,7 +190,8 @@ export default function PaymentPage() {
         razorpaySignature,
       };
 
-      // 1. Authoritative backend order creation, sequential ID assignment, stock deduction & email sync
+      // 1. Submit order to backend — now returns IMMEDIATELY after DB save
+      //    (GAS email + sheets sync runs as background job on the server)
       let finalOrderId = pendingOrder.orderId;
       try {
         const orderResult = await submitOrderNotification(completedOrder);
@@ -199,6 +200,7 @@ export default function PaymentPage() {
         }
       } catch (submitErr) {
         console.warn(`[PaymentPage] Order submission warning:`, submitErr);
+        // Non-fatal: order may still be in DB via Razorpay webhook fallback
       }
 
       const finalizedOrder: OrderNotificationPayload = {
@@ -206,7 +208,7 @@ export default function PaymentPage() {
         orderId: finalOrderId,
       };
 
-      // 2. Persist finalized order locally with the real sequential ID for offline/immediate cache
+      // 2. Persist finalized order locally with the real sequential ID for immediate success page display
       try {
         localStorage.setItem("shreehari_latest_order", JSON.stringify(finalizedOrder));
         const existingRaw = localStorage.getItem("shreehari_orders");
@@ -222,12 +224,14 @@ export default function PaymentPage() {
         /* ignore */
       }
 
+      // 3. Clear cart and navigate immediately — no waiting for emails or sheets
+      clearCart();
+      navigate("/order-success", { replace: true, state: finalizedOrder });
+
+      // 4. Trigger stock refresh in background (non-blocking)
       deductLiveProductStock(finalizedOrder.items).catch(() => {});
       refreshProducts().catch(() => {});
 
-      // 3. Clear cart and navigate to Order Success page with the real sequential order
-      clearCart();
-      navigate("/order-success", { replace: true, state: finalizedOrder });
     } catch (err) {
       setIsProcessing(false);
       setIsSaving(false);

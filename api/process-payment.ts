@@ -527,7 +527,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
     console.warn(`[process-payment] ⚠️ DB persist warning for order ${activeOrderId}: ${dbError}`);
   }
 
-  // ── 5. Forward to Google Apps Script (Sheets + Email) with retry ──────────
+  // ── 5. Build GAS payload ──────────────────────────────────────────────────
   const webhookUrl =
     process.env.GOOGLE_SHEETS_WEBHOOK_URL ||
     process.env.VITE_ORDER_WEBHOOK_URL ||
@@ -558,7 +558,10 @@ export default async function handler(req: any, res?: any): Promise<any> {
   const gasPayload = {
     ...cleanOrderPayload,
     orderId: activeOrderId,
+    // Ensure email is always mapped to the field GAS expects
+    email: sanitizedEmail || "",
     paymentId: paymentId || "N/A",
+    razorpayPaymentId: paymentId || "N/A",
     mapsLink,
     formattedDate,
     productsSummary,
@@ -567,39 +570,52 @@ export default async function handler(req: any, res?: any): Promise<any> {
     _processedAt: startedAt,
   };
 
-  const gasResult = await callGoogleAppsScript(webhookUrl, gasPayload, 3);
+  // ── 6. Return response to browser IMMEDIATELY after DB save ───────────────
+  // GAS (email + Google Sheets) runs as a non-blocking background promise.
+  // This eliminates the delay between payment success and the success page.
+  // The Vercel serverless function continues executing after res is sent.
+  console.info(
+    `[process-payment] ✅ ORDER ${activeOrderId} SAVED IN DB | Payment: ${paymentId} | Returning to browser immediately.`
+  );
 
-  // ── 6. Update notification status in Supabase ─────────────────────────────
-  const sheetsSynced = gasResult.sheetUpdated || gasResult.success;
-  const emailSent = gasResult.emailSent || gasResult.success;
-  const currentRetryCount = existingOrder?.retry_count || 0;
-
-  await updateNotificationStatus(activeOrderId, {
-    sheets_synced: sheetsSynced,
-    email_sent: emailSent,
-    retry_count: currentRetryCount + gasResult.attempts,
-    last_error: gasResult.success ? null : (gasResult.lastError ?? null),
-    last_attempt_at: new Date().toISOString(),
-  });
-
-  if (gasResult.success) {
-    console.info(
-      `[process-payment] ✅ ORDER ${activeOrderId} FULLY PROCESSED | Payment: ${paymentId} | Sheets: ✅ | Email: ✅`
-    );
-  } else {
-    console.error(
-      `[process-payment] ❌ ORDER ${activeOrderId} GAS FORWARD FAILED | Error: ${gasResult.lastError}`
-    );
-  }
-
-  // ── 7. Respond to browser ─────────────────────────────────────────────────
-  return sendApiResponse(res, 200, {
+  // Send response to browser immediately
+  sendApiResponse(res, 200, {
     success: true,
     orderId: activeOrderId,
     alreadyProcessed: false,
-    sheetsSynced,
-    emailSent,
-    attempts: gasResult.attempts,
-    ...(sheetsSynced && emailSent ? {} : { warning: "Order saved. Sheet/email sync queued for retry." }),
+    sheetsSynced: false,   // Will be updated by background job
+    emailSent: false,      // Will be updated by background job
+    message: "Order created. Notifications dispatching in background.",
   });
+
+  // ── 7. Background: Forward to GAS (Sheets + Email) with retry ────────────
+  // This runs AFTER the browser response is already sent.
+  // The Vercel serverless function stays alive to complete this work.
+  const currentRetryCount = existingOrder?.retry_count || 0;
+  try {
+    const gasResult = await callGoogleAppsScript(webhookUrl, gasPayload, 3);
+
+    const sheetsSynced = gasResult.sheetUpdated || gasResult.success;
+    const emailSent = gasResult.emailSent || gasResult.success;
+
+    await updateNotificationStatus(activeOrderId, {
+      sheets_synced: sheetsSynced,
+      email_sent: emailSent,
+      retry_count: currentRetryCount + gasResult.attempts,
+      last_error: gasResult.success ? null : (gasResult.lastError ?? null),
+      last_attempt_at: new Date().toISOString(),
+    });
+
+    if (gasResult.success) {
+      console.info(
+        `[process-payment] ✅ BACKGROUND GAS DONE | Order: ${activeOrderId} | Sheets: ✅ | Email: ✅ | Attempts: ${gasResult.attempts}`
+      );
+    } else {
+      console.error(
+        `[process-payment] ❌ BACKGROUND GAS FAILED | Order: ${activeOrderId} | Error: ${gasResult.lastError}`
+      );
+    }
+  } catch (bgErr) {
+    console.error(`[process-payment] ❌ BACKGROUND GAS EXCEPTION | Order: ${activeOrderId}:`, bgErr);
+  }
 }

@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/Button";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 
 interface SuccessState {
   orderId?: string;
@@ -49,7 +49,8 @@ export default function OrderSuccessPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Load from location.state OR fallback to latest saved order in localStorage
+  // Load from location.state (always has real sequential ID after our fix)
+  // OR fallback to latest saved order in localStorage
   const order = useMemo(() => {
     const stateOrder = location.state as SuccessState | null;
     if (stateOrder && stateOrder.orderId) return stateOrder;
@@ -69,45 +70,10 @@ export default function OrderSuccessPage() {
     };
   }, [location.state]);
 
-  const [liveOrderId, setLiveOrderId] = useState<string>(() => {
-    try {
-      const stored = localStorage.getItem("shreehari_latest_order");
-      if (stored) {
-        const parsed = JSON.parse(stored) as SuccessState;
-        if (parsed.orderId && /^SHK-?\d+$/i.test(parsed.orderId)) return parsed.orderId;
-      }
-    } catch { /* ignore */ }
-    const stateOrder = location.state as SuccessState | null;
-    if (stateOrder?.orderId && /^SHK-?\d+$/i.test(stateOrder.orderId)) return stateOrder.orderId;
-    return "";
-  });
-
-  useEffect(() => {
-    const checkLatest = () => {
-      try {
-        const stored = localStorage.getItem("shreehari_latest_order");
-        if (stored) {
-          const parsed = JSON.parse(stored) as SuccessState;
-          if (
-            parsed.orderId &&
-            /^SHK-?\d+$/i.test(parsed.orderId) &&
-            parsed.orderId !== liveOrderId
-          ) {
-            setLiveOrderId(parsed.orderId);
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-    checkLatest();
-    const timer = setInterval(checkLatest, 250);
-    return () => clearInterval(timer);
-  }, [liveOrderId]);
-
   const orderId =
-    liveOrderId ||
-    (order.orderId && /^SHK-?\d+$/i.test(order.orderId) ? order.orderId : "SHK00001");
+    (order.orderId && /^SHK-?\d+$/i.test(order.orderId))
+      ? order.orderId
+      : "SHK00001";
   const total = order.total ?? 230;
   const subtotal = order.subtotal ?? total;
   const deliveryCharge = order.deliveryCharge ?? 30;
