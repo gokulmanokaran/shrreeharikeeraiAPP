@@ -78,8 +78,11 @@ async function runE2ETestSuite() {
   // Get a test product and its initial stock
   const { data: testProds } = await adminClient.from("products").select("id, name, stock_quantity").limit(1);
   const testProduct = testProds?.[0];
-  const initialStock = testProduct?.stock_quantity ?? 100;
-  console.log(`Test Product: ${testProduct?.name} (${testProduct?.id}), Current stock: ${initialStock}`);
+  if (!testProduct) {
+    throw new Error("No test product found in database.");
+  }
+  const initialStock = testProduct.stock_quantity ?? 100;
+  console.log(`Test Product: ${testProduct.name} (${testProduct.id}), Current stock: ${initialStock}`);
 
   // Ensure stock is sufficient
   await adminClient.from("products").update({ stock_quantity: 50, in_stock: true }).eq("id", testProduct.id);
