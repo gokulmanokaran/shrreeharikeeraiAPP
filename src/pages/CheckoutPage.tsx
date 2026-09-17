@@ -231,7 +231,6 @@ export default function CheckoutPage() {
     isNavigatingRef.current = true;
     setPlacing(true);
 
-    const orderId = `SHK-TEMP-${Date.now().toString().slice(-6)}`;
     const orderItems = items.map((i) => ({
       id: i.product.id,
       productId: i.product.productId || (i.product as any).parentId || i.product.id,
@@ -258,7 +257,7 @@ export default function CheckoutPage() {
       .join(", ");
 
     const pendingOrder = {
-      orderId,
+      orderId: "",
       userId: user?.id || profile?.id || undefined,
       total,
       subtotal,

@@ -6,6 +6,7 @@ import razorpayWebhookHandler from "../api/razorpay-webhook.js";
 const envFile = fs.readFileSync(".env", "utf8");
 const url = envFile.match(/^SUPABASE_URL=(.*)$/m)?.[1]?.trim() || "https://wmzevbfhziroffoyxkxf.supabase.co";
 const serviceKey = envFile.match(/^SUPABASE_SERVICE_ROLE_KEY=(.*)$/m)?.[1]?.trim();
+process.env.RAZORPAY_KEY_SECRET = "test_razorpay_secret_suite";
 const adminClient = createClient(url, serviceKey!, { auth: { persistSession: false } });
 
 function mockReqRes(method: string, body: any, headers: Record<string, string> = {}) {

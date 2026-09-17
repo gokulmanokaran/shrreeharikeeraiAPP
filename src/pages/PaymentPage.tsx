@@ -80,7 +80,7 @@ export default function PaymentPage() {
   // Retrieve pending order from navigation state or localStorage fallback
   const pendingOrder = useMemo<OrderNotificationPayload | null>(() => {
     const stateOrder = location.state?.order as OrderNotificationPayload | undefined;
-    if (stateOrder && stateOrder.orderId) return stateOrder;
+    if (stateOrder && (stateOrder.items?.length || stateOrder.total !== undefined)) return stateOrder;
 
     try {
       const stored =
@@ -153,7 +153,7 @@ export default function PaymentPage() {
         customerName: fullName,
         customerEmail: email || user?.email || undefined,
         customerPhone: mobile,
-        description: `Shree Hari Keerai — Order #${orderId}`,
+        description: orderId ? `Shree Hari Keerai — Order #${orderId}` : "Shree Hari Keerai — Fresh Greens Order",
         userId: currentUserId,
         preferredMethod: methodInfo.rzpMethod,
         onPaymentFailed: (errorMsg) => {
@@ -267,7 +267,7 @@ export default function PaymentPage() {
           </button>
           <div>
             <h1 className="text-base font-extrabold text-[#111111] leading-tight">Payment</h1>
-            <p className="text-[11px] text-[#00A651] font-bold">Order ID: #{orderId}</p>
+            <p className="text-[11px] text-[#00A651] font-bold">Secure Checkout</p>
           </div>
         </div>
 
