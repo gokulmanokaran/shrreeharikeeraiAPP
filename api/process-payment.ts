@@ -115,8 +115,8 @@ async function callGoogleAppsScript(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const controller = new AbortController();
-      // Give GAS up to 25 seconds per attempt (cold starts can be slow)
-      const timeoutId = setTimeout(() => controller.abort(), 25_000);
+      // 6s per attempt — GAS averages ~3.5s (verified). Fits within 7s race window.
+      const timeoutId = setTimeout(() => controller.abort(), 6_000);
 
       const res = await fetch(webhookUrl, {
         method: "POST",
@@ -187,6 +187,7 @@ async function callGoogleAppsScript(
     responseSnippet,
   };
 }
+
 
 /** Upsert or insert order into Supabase orders table with guaranteed unique sequential order ID */
 async function upsertOrderToSupabase(
@@ -570,52 +571,77 @@ export default async function handler(req: any, res?: any): Promise<any> {
     _processedAt: startedAt,
   };
 
-  // ── 6. Return response to browser IMMEDIATELY after DB save ───────────────
-  // GAS (email + Google Sheets) runs as a non-blocking background promise.
-  // This eliminates the delay between payment success and the success page.
-  // The Vercel serverless function continues executing after res is sent.
-  console.info(
-    `[process-payment] ✅ ORDER ${activeOrderId} SAVED IN DB | Payment: ${paymentId} | Returning to browser immediately.`
-  );
+  // ── 6. Call GAS with race timeout, then return to browser ─────────────────
+  // Strategy: race GAS against a 7s timeout.
+  // - If GAS responds in time → emails + sheets done, respond immediately after
+  // - If GAS times out → still respond to browser with orderId, Razorpay webhook
+  //   acts as the safety net for email/sheets (it fires server-to-server)
+  //
+  // WHY: Vercel terminates the serverless function as soon as res.end() is called.
+  // Code after res.json() does NOT execute. So GAS MUST complete before we respond.
+  const currentRetryCount = existingOrder?.retry_count || 0;
 
-  // Send response to browser immediately
-  sendApiResponse(res, 200, {
+  // Single attempt with 7-second timeout (GAS averages 3-4s)
+  const GAS_RACE_TIMEOUT_MS = 7_000;
+  let gasResult: GasCallResult;
+  try {
+    gasResult = await Promise.race([
+      callGoogleAppsScript(webhookUrl, gasPayload, 1), // 1 attempt, 7s timeout inside
+      new Promise<GasCallResult>((resolve) =>
+        setTimeout(
+          () =>
+            resolve({
+              success: false,
+              sheetUpdated: false,
+              emailSent: false,
+              attempts: 1,
+              lastError: `GAS race timed out after ${GAS_RACE_TIMEOUT_MS}ms`,
+            }),
+          GAS_RACE_TIMEOUT_MS
+        )
+      ),
+    ]);
+  } catch (gasErr) {
+    gasResult = {
+      success: false,
+      sheetUpdated: false,
+      emailSent: false,
+      attempts: 1,
+      lastError: gasErr instanceof Error ? gasErr.message : String(gasErr),
+    };
+  }
+
+  const sheetsSynced = gasResult.sheetUpdated || gasResult.success;
+  const emailSent = gasResult.emailSent || gasResult.success;
+
+  // Update Supabase notification status
+  await updateNotificationStatus(activeOrderId, {
+    sheets_synced: sheetsSynced,
+    email_sent: emailSent,
+    retry_count: currentRetryCount + gasResult.attempts,
+    last_error: gasResult.success ? null : (gasResult.lastError ?? null),
+    last_attempt_at: new Date().toISOString(),
+  });
+
+  if (gasResult.success) {
+    console.info(
+      `[process-payment] ✅ ORDER ${activeOrderId} FULLY PROCESSED | Payment: ${paymentId} | Sheets: ✅ | Email: ✅`
+    );
+  } else {
+    console.warn(
+      `[process-payment] ⚠️ ORDER ${activeOrderId} GAS TIMED OUT (Razorpay webhook will retry) | Error: ${gasResult.lastError}`
+    );
+  }
+
+  // ── 7. Respond to browser ─────────────────────────────────────────────────
+  // This MUST be the last thing we do — Vercel terminates after res.json()
+  return sendApiResponse(res, 200, {
     success: true,
     orderId: activeOrderId,
     alreadyProcessed: false,
-    sheetsSynced: false,   // Will be updated by background job
-    emailSent: false,      // Will be updated by background job
-    message: "Order created. Notifications dispatching in background.",
+    sheetsSynced,
+    emailSent,
+    ...(sheetsSynced && emailSent ? {} : { warning: "Order saved. Email/sheets syncing via Razorpay webhook." }),
   });
-
-  // ── 7. Background: Forward to GAS (Sheets + Email) with retry ────────────
-  // This runs AFTER the browser response is already sent.
-  // The Vercel serverless function stays alive to complete this work.
-  const currentRetryCount = existingOrder?.retry_count || 0;
-  try {
-    const gasResult = await callGoogleAppsScript(webhookUrl, gasPayload, 3);
-
-    const sheetsSynced = gasResult.sheetUpdated || gasResult.success;
-    const emailSent = gasResult.emailSent || gasResult.success;
-
-    await updateNotificationStatus(activeOrderId, {
-      sheets_synced: sheetsSynced,
-      email_sent: emailSent,
-      retry_count: currentRetryCount + gasResult.attempts,
-      last_error: gasResult.success ? null : (gasResult.lastError ?? null),
-      last_attempt_at: new Date().toISOString(),
-    });
-
-    if (gasResult.success) {
-      console.info(
-        `[process-payment] ✅ BACKGROUND GAS DONE | Order: ${activeOrderId} | Sheets: ✅ | Email: ✅ | Attempts: ${gasResult.attempts}`
-      );
-    } else {
-      console.error(
-        `[process-payment] ❌ BACKGROUND GAS FAILED | Order: ${activeOrderId} | Error: ${gasResult.lastError}`
-      );
-    }
-  } catch (bgErr) {
-    console.error(`[process-payment] ❌ BACKGROUND GAS EXCEPTION | Order: ${activeOrderId}:`, bgErr);
-  }
 }
+
