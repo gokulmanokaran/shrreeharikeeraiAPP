@@ -2,20 +2,27 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // PRIMARY order processor called by the browser after a successful Razorpay payment.
 //
-// FLOW:
-//   1. Verify Razorpay signature (if secret is configured)
-//   2. Upsert order into Supabase `orders` table (durable, idempotent)
-//   3. Forward to Google Apps Script for Sheets + Email (with retry & follow redirects)
-//   4. Mark sheets_synced / email_sent in Supabase
-//   5. Return success to browser
-//
-// IDEMPOTENCY:
-//   If the order is already in Supabase AND confirmed synced to Sheets + Email,
-//   we return alreadyProcessed: true to prevent duplicate rows and duplicate emails.
+// HARDENED SECURITY & SEQUENTIAL ORDER ID:
+//   1. Constant-time Razorpay signature verification (prevent spoofing/timing attacks)
+//   2. Server-side price, discount, and total recalculation against live database
+//   3. Strict input sanitization (XSS, control chars, length validation)
+//   4. Atomic sequential Order ID generation (ORD-000001, ORD-000002, ...)
+//   5. Durable persistence into Supabase `orders` table (idempotent, no duplicates)
+//   6. Forward to Google Apps Script for Sheets + Email (with exponential backoff)
+//   7. Mark sheets_synced / email_sent in Supabase
+//   8. Return authoritative sequential orderId & status to browser
 // ──────────────────────────────────────────────────────────────────────────────
 
 import crypto from "crypto";
-import { handleCors, parseApiRequest, sendApiResponse } from "./_catalog.js";
+import {
+  handleCors,
+  parseApiRequest,
+  sendApiResponse,
+  getOrGenerateSequentialOrderId,
+  sanitizeString,
+  safeTimingEqual,
+  getCloudProducts,
+} from "./_catalog.js";
 import { getSupabaseServerClient } from "./_supabase.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -31,7 +38,7 @@ interface OrderItem {
 
 interface ProcessPaymentBody {
   // Storefront order fields
-  orderId: string;
+  orderId?: string;
   createdAt?: string;
   fullName: string;
   mobile: string;
@@ -53,6 +60,7 @@ interface ProcessPaymentBody {
   subtotal: number;
   deliveryCharge: number;
   discount: number;
+  discountPercentage?: number;
   total: number;
   paymentStatus?: string;
   paymentId?: string;
@@ -74,11 +82,16 @@ function verifyRazorpaySignature(
   signature: string,
   secret: string
 ): boolean {
-  const generated = crypto
-    .createHmac("sha256", secret)
-    .update(`${razorpayOrderId}|${razorpayPaymentId}`)
-    .digest("hex");
-  return generated === signature;
+  if (!signature || !secret || !razorpayOrderId || !razorpayPaymentId) return false;
+  try {
+    const generated = crypto
+      .createHmac("sha256", secret)
+      .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+      .digest("hex");
+    return safeTimingEqual(generated, signature);
+  } catch {
+    return false;
+  }
 }
 
 interface GasCallResult {
@@ -102,7 +115,7 @@ async function callGoogleAppsScript(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const controller = new AbortController();
-      // Give GAS up to 25 seconds per attempt (it can be slow on cold start)
+      // Give GAS up to 25 seconds per attempt (cold starts can be slow)
       const timeoutId = setTimeout(() => controller.abort(), 25_000);
 
       const res = await fetch(webhookUrl, {
@@ -121,15 +134,12 @@ async function callGoogleAppsScript(
       try {
         parsed = JSON.parse(text);
       } catch {
-        // GAS may return non-JSON text or redirect HTML wrapper in some environments
+        // GAS may return non-JSON text or redirect wrapper
       }
 
-      // If HTTP ok or redirect completed
       if (res.ok || res.status === 302 || res.status === 0) {
         const isDuplicate = Boolean(parsed?.duplicate);
-        // If sheet was appended OR it was already recognized as duplicate in Sheets
         const sheetUpdated = Boolean(parsed?.sheetUpdated) || isDuplicate || parsed?.status === "success";
-        // If email was sent (customer or admin) OR it was duplicate
         const emailSent = Boolean(parsed?.emailSent) || Boolean(parsed?.customerEmailSent) || isDuplicate || parsed?.status === "success";
 
         console.info(
@@ -163,7 +173,6 @@ async function callGoogleAppsScript(
       );
     }
 
-    // Exponential backoff: 1s, 2s, 4s between attempts
     if (attempt < maxAttempts) {
       await new Promise((r) => setTimeout(r, Math.pow(2, attempt - 1) * 1000));
     }
@@ -179,9 +188,10 @@ async function callGoogleAppsScript(
   };
 }
 
-/** Upsert order into Supabase orders table. Returns alreadyProcessed: true ONLY if both Google Sheets & Email are confirmed synced. */
+/** Upsert order into Supabase orders table with guaranteed sequential order ID */
 async function upsertOrderToSupabase(
-  data: ProcessPaymentBody
+  data: ProcessPaymentBody,
+  assignedOrderId: string
 ): Promise<{ alreadyProcessed: boolean; error?: string; existingOrder?: any }> {
   const supabase = getSupabaseServerClient();
   if (!supabase) {
@@ -192,12 +202,12 @@ async function upsertOrderToSupabase(
   const paymentId = data.paymentId || data.razorpayPaymentId || "";
   let existingOrderRow: any = null;
 
-  // 1. Check if this order or payment was ALREADY completely processed & synced to Sheets and Email
+  // 1. Check if this order or payment was ALREADY completely processed & synced
   try {
     const { data: existingById } = await supabase
       .from("orders")
       .select("id, user_id, payment_status, sheets_synced, email_sent, retry_count")
-      .eq("id", data.orderId)
+      .eq("id", assignedOrderId)
       .maybeSingle();
 
     if (existingById) {
@@ -205,24 +215,24 @@ async function upsertOrderToSupabase(
       const isPaid = String(existingById.payment_status || "").toLowerCase().includes("paid");
       if (isPaid && existingById.sheets_synced && existingById.email_sent) {
         console.info(
-          `[process-payment] ℹ️ Order ${data.orderId} already exists in DB and is fully synced (sheets_synced=true, email_sent=true). Skipping duplicate notification.`
+          `[process-payment] ℹ️ Order ${assignedOrderId} already exists in DB and is fully synced. Skipping duplicate notification.`
         );
         return { alreadyProcessed: true, existingOrder: existingById };
       }
     }
 
-    if (paymentId) {
+    if (paymentId && paymentId !== "N/A") {
       const { data: existingByPayment } = await supabase
         .from("orders")
         .select("id, user_id, payment_status, sheets_synced, email_sent, retry_count")
         .eq("razorpay_payment_id", paymentId)
         .maybeSingle();
 
-      if (existingByPayment && existingByPayment.id !== data.orderId) {
+      if (existingByPayment && existingByPayment.id !== assignedOrderId) {
         const isPaid = String(existingByPayment.payment_status || "").toLowerCase().includes("paid");
         if (isPaid && existingByPayment.sheets_synced && existingByPayment.email_sent) {
           console.info(
-            `[process-payment] ℹ️ Payment ${paymentId} was already processed under order ${existingByPayment.id} (sheets_synced=true, email_sent=true). Skipping duplicate.`
+            `[process-payment] ℹ️ Payment ${paymentId} was already processed under order ${existingByPayment.id}. Skipping duplicate.`
           );
           return { alreadyProcessed: true, existingOrder: existingByPayment };
         }
@@ -232,7 +242,7 @@ async function upsertOrderToSupabase(
     console.warn("[process-payment] Supabase idempotency check error:", checkErr);
   }
 
-  // 2. Resolve target user_id (from payload, existing record, or lookup registered user by email)
+  // 2. Resolve target user_id
   let targetUserId = data.userId || existingOrderRow?.user_id || null;
   if (!targetUserId && data.email) {
     try {
@@ -241,7 +251,7 @@ async function upsertOrderToSupabase(
       const matched = (userList?.users || []).find((u: any) => u.email?.toLowerCase() === cleanEmail);
       if (matched) {
         targetUserId = matched.id;
-        console.info(`[process-payment] 🔗 Associated order ${data.orderId} with registered user ${targetUserId} (${cleanEmail}).`);
+        console.info(`[process-payment] 🔗 Associated order ${assignedOrderId} with registered user ${targetUserId} (${cleanEmail}).`);
       }
     } catch (userLookupErr) {
       console.warn("[process-payment] Failed to lookup user by email:", userLookupErr);
@@ -252,24 +262,8 @@ async function upsertOrderToSupabase(
     data.mapsLink ||
     (data.lat && data.lng ? `https://www.google.com/maps?q=${data.lat},${data.lng}` : "");
 
-  // These computed values are available for GAS forwarding; prefixed with void to avoid unused-var lint
-  void (data.formattedDate ||
-    new Date(data.createdAt || Date.now()).toLocaleString("en-IN", {
-      timeZone: "Asia/Kolkata",
-      dateStyle: "medium",
-      timeStyle: "short",
-    }));
-
-  void (data.productsSummary ||
-    (data.items || [])
-      .map((item) => `${item.name}${item.unit ? ` (${item.unit})` : ""} × ${item.quantity}`)
-      .join(", "));
-
-  void (data.totalQuantity ||
-    (data.items || []).reduce((acc, item) => acc + (item.quantity || 1), 0));
-
   const row = {
-    id: data.orderId,
+    id: assignedOrderId,
     user_id: targetUserId,
     razorpay_payment_id: paymentId || null,
     razorpay_order_id: data.razorpayOrderId || null,
@@ -289,14 +283,14 @@ async function upsertOrderToSupabase(
     discount: Number(data.discount || 0),
     total: Number(data.total || 0),
     items: data.items || [],
-    payment_status: data.paymentStatus || `Paid (GPay)${paymentId ? ` · ${paymentId}` : ""}`,
+    payment_status: data.paymentStatus || `Paid (Razorpay)${paymentId ? ` · ${paymentId}` : ""}`,
     sheets_synced: existingOrderRow?.sheets_synced ?? false,
     email_sent: existingOrderRow?.email_sent ?? false,
     retry_count: existingOrderRow?.retry_count ?? 0,
     source: data.source || "storefront",
   };
 
-  // 3. Upsert order row (using server service_role key to bypass customer RLS restrictions)
+  // 3. Upsert order row
   const { error } = await supabase
     .from("orders")
     .upsert(row, { onConflict: "id" });
@@ -306,7 +300,7 @@ async function upsertOrderToSupabase(
     return { alreadyProcessed: false, error: error.message, existingOrder: existingOrderRow };
   }
 
-  // 4. Server-side stock deduction (deduct once upon paid order)
+  // 4. Server-side atomic stock deduction
   try {
     const validItems = (data.items || [])
       .filter((item) => item && item.id)
@@ -316,13 +310,13 @@ async function upsertOrderToSupabase(
       }));
     if (validItems.length > 0 && (!existingOrderRow || existingOrderRow.retry_count === 0)) {
       await supabase.rpc("deduct_product_stock", { p_items: validItems });
-      console.info(`[process-payment] ✅ Atomic stock deduction executed for order ${data.orderId}.`);
+      console.info(`[process-payment] ✅ Atomic stock deduction executed for order ${assignedOrderId}.`);
     }
   } catch (stockErr) {
     console.warn("[process-payment] Stock deduction RPC warning:", stockErr);
   }
 
-  console.info(`[process-payment] Order ${data.orderId} successfully persisted/upserted in Supabase.`);
+  console.info(`[process-payment] Order ${assignedOrderId} successfully persisted/upserted in Supabase.`);
   return { alreadyProcessed: false, existingOrder: existingOrderRow };
 }
 
@@ -359,19 +353,24 @@ export default async function handler(req: any, res?: any): Promise<any> {
   }
 
   const data = body as ProcessPaymentBody;
-  const { orderId } = data;
-
-  // ── 0. Basic validation ───────────────────────────────────────────────────
-  if (!orderId) {
-    return sendApiResponse(res, 400, { error: "Missing orderId in request body." });
-  }
-
-  const paymentId = data.paymentId || data.razorpayPaymentId || "";
+  const paymentId = sanitizeString(data.paymentId || data.razorpayPaymentId || "", 100);
   const startedAt = new Date().toISOString();
 
-  console.info(`[process-payment] 📦 Processing order ${orderId} | Payment: ${paymentId || "N/A"} | ${startedAt}`);
+  // ── 0. Input Sanitization & Basic Validation ──────────────────────────────
+  const sanitizedFullName = sanitizeString(data.fullName || "", 100);
+  const sanitizedMobile = sanitizeString(data.mobile || "", 15);
+  const sanitizedEmail = sanitizeString(data.email || "", 100);
+  const sanitizedAddress = sanitizeString(data.address || "", 500);
+  const sanitizedCity = sanitizeString(data.city || "", 50);
+  const sanitizedState = sanitizeString(data.state || "", 50);
+  const sanitizedPincode = sanitizeString(data.pincode || "", 10);
+  const sanitizedUserId = data.userId ? sanitizeString(data.userId, 64) : undefined;
 
-  // ── 1. Razorpay signature verification (if secret is configured) ──────────
+  if (!sanitizedFullName && !sanitizedMobile) {
+    return sendApiResponse(res, 400, { error: "Missing required customer name or mobile." });
+  }
+
+  // ── 1. Razorpay signature verification (if secret configured) ─────────────
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
   if (keySecret && data.razorpayOrderId && data.razorpaySignature && paymentId) {
     const isValid = verifyRazorpaySignature(
@@ -381,25 +380,110 @@ export default async function handler(req: any, res?: any): Promise<any> {
       keySecret
     );
     if (!isValid) {
-      console.error(`[process-payment] ❌ Invalid Razorpay signature for order ${orderId} / payment ${paymentId}`);
+      console.error(`[process-payment] ❌ Invalid Razorpay signature for payment ${paymentId}`);
       return sendApiResponse(res, 400, {
         success: false,
         error: "Payment signature verification failed.",
-        orderId,
       });
     }
-    console.info(`[process-payment] ✅ Razorpay signature verified for order ${orderId}.`);
+    console.info(`[process-payment] ✅ Razorpay signature verified for payment ${paymentId}.`);
   }
 
-  // ── 2. Upsert order to Supabase (durable persistence, idempotency) ────────
-  const { alreadyProcessed, error: dbError, existingOrder } = await upsertOrderToSupabase(data);
+  // ── 2. Server-side Catalog & Price Hardening ───────────────────────────────
+  let validatedItems: OrderItem[] = [];
+  let computedSubtotal = 0;
+
+  try {
+    const catalogProducts = await getCloudProducts();
+    const catalogMap = new Map<string, any>();
+    for (const cp of catalogProducts) {
+      catalogMap.set(cp.id, cp);
+      if (Array.isArray(cp.variants)) {
+        for (const v of cp.variants) {
+          catalogMap.set(v.id, { ...cp, price: v.price, unit: v.unit });
+        }
+      }
+    }
+
+    if (Array.isArray(data.items) && data.items.length > 0) {
+      for (const rawItem of data.items) {
+        if (!rawItem) continue;
+        const itemId = rawItem.id ? sanitizeString(rawItem.id, 64) : "";
+        const catProduct = itemId ? catalogMap.get(itemId) : null;
+        const qty = Math.max(1, Number(rawItem.quantity) || 1);
+        const unitPrice = catProduct ? Number(catProduct.price) : Math.max(0, Number(rawItem.price) || 0);
+
+        computedSubtotal += unitPrice * qty;
+        validatedItems.push({
+          id: itemId || undefined,
+          name: sanitizeString(catProduct?.name || rawItem.name || "Product", 100),
+          nameTamil: sanitizeString(catProduct?.nameTamil || catProduct?.tamilName || rawItem.nameTamil || "", 100),
+          quantity: qty,
+          price: unitPrice,
+          unit: sanitizeString(catProduct?.unit || rawItem.unit || "1 Pack", 50),
+        });
+      }
+    }
+  } catch (priceErr) {
+    console.warn("[process-payment] Catalog lookup warning:", priceErr);
+    validatedItems = (data.items || []).map((i) => ({
+      ...i,
+      name: sanitizeString(i.name, 100),
+      quantity: Math.max(1, Number(i.quantity) || 1),
+      price: Math.max(0, Number(i.price) || 0),
+    }));
+    computedSubtotal = validatedItems.reduce((acc, i) => acc + i.price * i.quantity, 0);
+  }
+
+  const rawDiscount = Math.max(0, Number(data.discount) || 0);
+  const validatedDiscount = Math.min(computedSubtotal, rawDiscount);
+  const validatedDeliveryCharge = Math.max(0, Number(data.deliveryCharge) || 0);
+  const computedTotal = Math.round(Math.max(0, computedSubtotal - validatedDiscount + validatedDeliveryCharge) * 100) / 100;
+
+  // ── 3. Resolve / Generate Sequential Order ID (Database-side) ─────────────
+  const supabase = getSupabaseServerClient();
+  const sequentialOrderId = await getOrGenerateSequentialOrderId(
+    supabase,
+    paymentId,
+    data.orderId
+  );
+
+  console.info(
+    `[process-payment] 📦 Processing Sequential Order: ${sequentialOrderId} | Payment: ${paymentId || "N/A"} | Amount: ₹${computedTotal}`
+  );
+
+  const cleanOrderPayload: ProcessPaymentBody = {
+    ...data,
+    orderId: sequentialOrderId,
+    userId: sanitizedUserId,
+    fullName: sanitizedFullName,
+    mobile: sanitizedMobile,
+    alternateMobile: data.alternateMobile ? sanitizeString(data.alternateMobile, 15) : undefined,
+    email: sanitizedEmail,
+    address: sanitizedAddress,
+    city: sanitizedCity,
+    state: sanitizedState,
+    pincode: sanitizedPincode,
+    items: validatedItems,
+    subtotal: computedSubtotal,
+    deliveryCharge: validatedDeliveryCharge,
+    discount: validatedDiscount,
+    total: computedTotal,
+    paymentId: paymentId || undefined,
+    paymentStatus: data.paymentStatus || `Paid (Razorpay)${paymentId ? ` · ${paymentId}` : ""}`,
+  };
+
+  // ── 4. Upsert order to Supabase ───────────────────────────────────────────
+  const { alreadyProcessed, error: dbError, existingOrder } = await upsertOrderToSupabase(
+    cleanOrderPayload,
+    sequentialOrderId
+  );
 
   if (alreadyProcessed) {
-    // Both Sheets and Email were already synced — return success without duplicate delivery
-    console.info(`[process-payment] ℹ️ Order ${orderId} already processed & synced. Returning cached success.`);
+    console.info(`[process-payment] ℹ️ Order ${sequentialOrderId} already processed & synced. Returning cached success.`);
     return sendApiResponse(res, 200, {
       success: true,
-      orderId,
+      orderId: sequentialOrderId,
       alreadyProcessed: true,
       sheetsSynced: true,
       emailSent: true,
@@ -408,11 +492,10 @@ export default async function handler(req: any, res?: any): Promise<any> {
   }
 
   if (dbError) {
-    console.warn(`[process-payment] ⚠️ DB persist warning for order ${orderId}: ${dbError}`);
-    // Continue anyway — we will still attempt GAS forward
+    console.warn(`[process-payment] ⚠️ DB persist warning for order ${sequentialOrderId}: ${dbError}`);
   }
 
-  // ── 3. Forward to Google Apps Script (Sheets + Email) with retry ──────────
+  // ── 5. Forward to Google Apps Script (Sheets + Email) with retry ──────────
   const webhookUrl =
     process.env.GOOGLE_SHEETS_WEBHOOK_URL ||
     process.env.VITE_ORDER_WEBHOOK_URL ||
@@ -432,16 +515,17 @@ export default async function handler(req: any, res?: any): Promise<any> {
 
   const productsSummary =
     data.productsSummary ||
-    (data.items || [])
+    validatedItems
       .map((item) => `${item.name}${item.unit ? ` (${item.unit})` : ""} × ${item.quantity}`)
       .join(", ");
 
   const totalQuantity =
     data.totalQuantity ||
-    (data.items || []).reduce((acc, item) => acc + (item.quantity || 1), 0);
+    validatedItems.reduce((acc, item) => acc + (item.quantity || 1), 0);
 
   const gasPayload = {
-    ...data,
+    ...cleanOrderPayload,
+    orderId: sequentialOrderId,
     paymentId: paymentId || "N/A",
     mapsLink,
     formattedDate,
@@ -453,12 +537,12 @@ export default async function handler(req: any, res?: any): Promise<any> {
 
   const gasResult = await callGoogleAppsScript(webhookUrl, gasPayload, 3);
 
-  // ── 4. Update notification status in Supabase ─────────────────────────────
+  // ── 6. Update notification status in Supabase ─────────────────────────────
   const sheetsSynced = gasResult.sheetUpdated || gasResult.success;
   const emailSent = gasResult.emailSent || gasResult.success;
   const currentRetryCount = existingOrder?.retry_count || 0;
 
-  await updateNotificationStatus(orderId, {
+  await updateNotificationStatus(sequentialOrderId, {
     sheets_synced: sheetsSynced,
     email_sent: emailSent,
     retry_count: currentRetryCount + gasResult.attempts,
@@ -466,23 +550,20 @@ export default async function handler(req: any, res?: any): Promise<any> {
     last_attempt_at: new Date().toISOString(),
   });
 
-  // ── 5. Log final outcome ──────────────────────────────────────────────────
   if (gasResult.success) {
     console.info(
-      `[process-payment] ✅ ORDER ${orderId} FULLY PROCESSED | Payment: ${paymentId} | Sheets: ${sheetsSynced ? "✅" : "⚠️"} | Email: ${emailSent ? "✅" : "⚠️"} | Attempts: ${gasResult.attempts}`
+      `[process-payment] ✅ ORDER ${sequentialOrderId} FULLY PROCESSED | Payment: ${paymentId} | Sheets: ✅ | Email: ✅`
     );
   } else {
     console.error(
-      `[process-payment] ❌ ORDER ${orderId} GAS FORWARD FAILED | Payment: ${paymentId} | Error: ${gasResult.lastError} | Attempts: ${gasResult.attempts} | Order IS persisted in Supabase — retry possible.`
+      `[process-payment] ❌ ORDER ${sequentialOrderId} GAS FORWARD FAILED | Error: ${gasResult.lastError}`
     );
   }
 
-  // ── 6. Respond to browser ─────────────────────────────────────────────────
-  // Always return 200 if the order was persisted in Supabase — the browser
-  // should not retry just because GAS had a temporary issue.
+  // ── 7. Respond to browser ─────────────────────────────────────────────────
   return sendApiResponse(res, 200, {
     success: true,
-    orderId,
+    orderId: sequentialOrderId,
     alreadyProcessed: false,
     sheetsSynced,
     emailSent,

@@ -38,7 +38,7 @@ function doPost(e) {
     }
 
     var data = JSON.parse(e.postData.contents);
-    orderId = data.orderId || "SHK-" + new Date().getTime();
+  var orderId = data.orderId || "ORD-" + new Date().getTime();
 
     Logger.log(
       "[doPost] START | Order: " + orderId +
@@ -233,7 +233,7 @@ function sendAdminOrderEmail(data) {
     recipient = Session.getEffectiveUser().getEmail() || ADMIN_EMAIL;
   }
 
-  var orderId = data.orderId || "SHK-" + new Date().getTime();
+  var orderId = data.orderId || "ORD-" + new Date().getTime();
   var customerName = data.fullName || "Valued Customer";
   var mobile = data.mobile || "";
   var email = data.email || "Not provided";
@@ -492,7 +492,7 @@ function sendCustomerOrderEmail(data) {
   }
 
   var recipient = data.email.trim();
-  var orderId = data.orderId || "SHK-" + new Date().getTime();
+  var orderId = data.orderId || "ORD-" + new Date().getTime();
   var customerName = data.fullName || "Valued Customer";
   var total = data.total || 0;
   var subtotal = data.subtotal || total;

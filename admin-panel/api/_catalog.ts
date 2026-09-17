@@ -2,6 +2,7 @@
 // Supabase-backed Catalog Engine for Serverless Endpoints
 // Serves Storefront, Admin Panel, and Future Android App via Supabase PostgreSQL.
 
+import crypto from "crypto";
 import { getSupabaseServerClient } from "./_supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -391,14 +392,78 @@ export function sendApiResponse(res: any, status: number, data: any, cacheContro
 // ─── Auth Validator ───────────────────────────────────────────────────────────
 export const DEFAULT_ADMIN_KEY = "shreehari_admin_secure_2026";
 
+// ─── Rate Limiter ─────────────────────────────────────────────────────────────
+const _rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+export function checkRateLimit(
+  key: string,
+  maxRequests = 10,
+  windowMs = 60_000
+): { allowed: boolean; remaining: number; retryAfterMs: number } {
+  const now = Date.now();
+  const entry = _rateLimitStore.get(key);
+
+  if (_rateLimitStore.size > 5000) {
+    for (const [k, v] of _rateLimitStore.entries()) {
+      if (now > v.resetAt) _rateLimitStore.delete(k);
+    }
+  }
+
+  if (!entry || now > entry.resetAt) {
+    _rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, remaining: maxRequests - 1, retryAfterMs: 0 };
+  }
+
+  if (entry.count >= maxRequests) {
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterMs: Math.max(0, entry.resetAt - now),
+    };
+  }
+
+  entry.count += 1;
+  return {
+    allowed: true,
+    remaining: maxRequests - entry.count,
+    retryAfterMs: 0,
+  };
+}
+
+// ─── Input Sanitization ───────────────────────────────────────────────────────
+export function sanitizeString(val: unknown, maxLen = 255): string {
+  if (val === null || val === undefined) return "";
+  let str = String(val).trim();
+  str = str.replace(/<[^>]*>/g, "");
+  str = str.replace(/javascript:/gi, "");
+  str = str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+  if (str.length > maxLen) {
+    str = str.substring(0, maxLen);
+  }
+  return str;
+}
+
+export function safeTimingEqual(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  try {
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
+}
+
 export function validateAdminAuth(getHeader: (name: string) => string | undefined): boolean {
   const key = process.env.ADMIN_API_KEY || DEFAULT_ADMIN_KEY;
   const auth = getHeader("authorization");
   if (auth) {
     const t = auth.replace(/^Bearer\s+/i, "").trim();
-    if (t === key || t.startsWith("shk_token_")) return true;
+    if (safeTimingEqual(t, key) || (t.startsWith("shk_token_") && t.length >= 16)) return true;
   }
-  const xk = getHeader("x-admin-key");
-  if (xk?.trim() === key) return true;
+  const xk = getHeader("x-admin-key")?.trim() || "";
+  if (xk && safeTimingEqual(xk, key)) return true;
   return false;
 }
+

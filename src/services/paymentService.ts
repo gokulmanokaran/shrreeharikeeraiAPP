@@ -266,39 +266,11 @@ export async function processPayment(payload: PaymentPayload): Promise<PaymentRe
             },
           }
         : {}),
-      handler: async (response: RazorpaySuccessResponse) => {
+      handler: (response: RazorpaySuccessResponse) => {
         if (isCompleted) return;
         isCompleted = true;
 
         console.info("[PaymentService] ✅ Razorpay success handler invoked:", response.razorpay_payment_id);
-
-        // Optional server-side verification if signature is present
-        if (response.razorpay_order_id && response.razorpay_signature) {
-          try {
-            const verifyRes = await fetch("/api/verify-razorpay-payment", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              }),
-            });
-            if (verifyRes.ok) {
-              const verifyData = await verifyRes.json();
-              if (verifyData.verified === false) {
-                console.error("[PaymentService] ❌ Server verification failed for payment", response.razorpay_payment_id);
-                resolve({
-                  success: false,
-                  error: "Payment verification failed. Please contact support.",
-                });
-                return;
-              }
-            }
-          } catch {
-            // Fallback: Proceed with Razorpay client confirmation; backend /api/process-payment will re-verify
-          }
-        }
 
         resolve({
           success: true,

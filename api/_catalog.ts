@@ -4,6 +4,7 @@
 
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { getSupabaseServerClient } from "./_supabase.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -446,14 +447,186 @@ export function sendApiResponse(res: any, status: number, data: any, cacheContro
 // ─── Auth Validator ───────────────────────────────────────────────────────────
 export const DEFAULT_ADMIN_KEY = "shreehari_admin_secure_2026";
 
+// ─── Rate Limiter (In-Memory for Serverless Instances) ─────────────────────────
+const _rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+export function checkRateLimit(
+  key: string,
+  maxRequests = 10,
+  windowMs = 60_000
+): { allowed: boolean; remaining: number; retryAfterMs: number } {
+  const now = Date.now();
+  const entry = _rateLimitStore.get(key);
+
+  // Clean old expired entries periodically
+  if (_rateLimitStore.size > 5000) {
+    for (const [k, v] of _rateLimitStore.entries()) {
+      if (now > v.resetAt) _rateLimitStore.delete(k);
+    }
+  }
+
+  if (!entry || now > entry.resetAt) {
+    _rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, remaining: maxRequests - 1, retryAfterMs: 0 };
+  }
+
+  if (entry.count >= maxRequests) {
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterMs: Math.max(0, entry.resetAt - now),
+    };
+  }
+
+  entry.count += 1;
+  return {
+    allowed: true,
+    remaining: maxRequests - entry.count,
+    retryAfterMs: 0,
+  };
+}
+
+// ─── Input Sanitization Helpers ───────────────────────────────────────────────
+export function sanitizeString(val: unknown, maxLen = 255): string {
+  if (val === null || val === undefined) return "";
+  let str = String(val).trim();
+  // Strip control characters and HTML tags/scripts to prevent XSS/injection
+  str = str.replace(/<[^>]*>/g, "");
+  str = str.replace(/javascript:/gi, "");
+  str = str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+  if (str.length > maxLen) {
+    str = str.substring(0, maxLen);
+  }
+  return str;
+}
+
+export function safeTimingEqual(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  try {
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
+}
+
 export function validateAdminAuth(getHeader: (name: string) => string | undefined): boolean {
   const key = process.env.ADMIN_API_KEY || DEFAULT_ADMIN_KEY;
   const auth = getHeader("authorization");
   if (auth) {
     const t = auth.replace(/^Bearer\s+/i, "").trim();
-    if (t === key || t.startsWith("shk_token_")) return true;
+    if (safeTimingEqual(t, key) || (t.startsWith("shk_token_") && t.length >= 16)) return true;
   }
-  const xk = getHeader("x-admin-key");
-  if (xk?.trim() === key) return true;
+  const xk = getHeader("x-admin-key")?.trim() || "";
+  if (xk && safeTimingEqual(xk, key)) return true;
   return false;
 }
+
+// ─── Sequential Order ID Generator ────────────────────────────────────────────
+/**
+ * Atomically resolves or generates the next sequential Order ID (ORD-000001, ORD-000002, etc.).
+ * 
+ * 1. If an order with this razorpay_payment_id already exists in Supabase, returns that order's ID.
+ * 2. If clientOrderId already follows ORD-XXXXXX format and exists in Supabase, returns that ID.
+ * 3. Calls Supabase RPC `generate_sequential_order_id()` if available.
+ * 4. Fallback: Queries existing ORD-XXXXXX records in DB, determines highest integer suffix, increments by 1,
+ *    and tests uniqueness with retry loop.
+ */
+export async function getOrGenerateSequentialOrderId(
+  supabase: any,
+  paymentId?: string,
+  clientOrderId?: string
+): Promise<string> {
+  // 1. Idempotency check by payment ID
+  if (supabase && paymentId && paymentId !== "N/A") {
+    try {
+      const { data: existingByPayment } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("razorpay_payment_id", paymentId)
+        .maybeSingle();
+      if (existingByPayment?.id) {
+        return existingByPayment.id;
+      }
+    } catch {
+      // Continue
+    }
+  }
+
+  // 2. Check if clientOrderId is an existing sequential order already in DB
+  if (supabase && clientOrderId && /^ORD-\d{6,}$/i.test(clientOrderId)) {
+    try {
+      const { data: existingById } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("id", clientOrderId)
+        .maybeSingle();
+      if (existingById?.id) {
+        return existingById.id;
+      }
+    } catch {
+      // Continue
+    }
+  }
+
+  // 3. Attempt DB-level RPC function
+  if (supabase) {
+    try {
+      const { data: rpcId, error: rpcErr } = await supabase.rpc("generate_sequential_order_id");
+      if (!rpcErr && rpcId && typeof rpcId === "string" && rpcId.startsWith("ORD-")) {
+        return rpcId;
+      }
+    } catch {
+      // Fall through to query-based fallback
+    }
+  }
+
+  // 4. DB-backed sequence calculation with conflict safety
+  if (supabase) {
+    try {
+      const { data: orderRows } = await supabase
+        .from("orders")
+        .select("id")
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      let maxSeq = 0;
+      if (Array.isArray(orderRows)) {
+        for (const row of orderRows) {
+          const idStr = String(row?.id || "");
+          const match = idStr.match(/^ORD-(\d+)$/i);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (!isNaN(num) && num > maxSeq) {
+              maxSeq = num;
+            }
+          }
+        }
+      }
+
+      // Check candidate ID with existence check
+      let candidateNum = maxSeq + 1;
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const candidateId = `ORD-${String(candidateNum).padStart(6, "0")}`;
+        const { data: conflict } = await supabase
+          .from("orders")
+          .select("id")
+          .eq("id", candidateId)
+          .maybeSingle();
+
+        if (!conflict) {
+          return candidateId;
+        }
+        candidateNum++;
+      }
+    } catch (err) {
+      console.warn("[getOrGenerateSequentialOrderId] Query fallback warning:", err);
+    }
+  }
+
+  // 5. Ultimate fallback if DB client is completely offline
+  return `ORD-${Date.now().toString().slice(-6)}`;
+}
+

@@ -18,7 +18,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useCart } from "../store/CartContext";
 import { useDelivery } from "../store/DeliveryContext";
 import { useProductCatalog } from "../store/ProductContext";
@@ -187,16 +187,7 @@ export default function PaymentPage() {
         razorpaySignature,
       };
 
-      // 1. Show saving state — backend is persisting to Supabase + Google Sheets
-      setIsProcessing(false);
-      setIsSaving(true);
-      setErrorMessage(null);
-
-      // 2. Deduct stock automatically upon successful payment (non-blocking)
-      deductLiveProductStock(completedOrder.items).catch(() => {});
-      refreshProducts().catch(() => {});
-
-      // 3. Persist completed order locally (for OrderSuccessPage fallback)
+      // 1. Immediately persist completed order locally for instant OrderSuccessPage rendering
       try {
         localStorage.setItem("shreehari_latest_order", JSON.stringify(completedOrder));
         const existingRaw = localStorage.getItem("shreehari_orders");
@@ -213,25 +204,14 @@ export default function PaymentPage() {
         /* ignore */
       }
 
-      // 4. Send to backend (Supabase + Google Sheets + Email) — AWAITED with timeout
-      const notificationPromise = submitOrderNotification(completedOrder);
-      const timeoutPromise = new Promise<OrderNotificationPayload>((resolve) =>
-        setTimeout(() => resolve(completedOrder), 12_000)
-      );
+      // 2. Dispatch backend order persistence, stock deduction & email notifications in background (non-blocking)
+      submitOrderNotification(completedOrder).catch((err) => {
+        console.warn(`[PaymentPage] Background order submission notification error:`, err);
+      });
+      deductLiveProductStock(completedOrder.items).catch(() => {});
+      refreshProducts().catch(() => {});
 
-      const notifResult = await Promise.race([notificationPromise, timeoutPromise]);
-
-      if (typeof notifResult === "object" && notifResult && "success" in notifResult) {
-        if (notifResult.success) {
-          console.info(`[PaymentPage] ✅ Order #${orderId} fully persisted and notified (path: ${notifResult.path}).`);
-        } else {
-          console.warn(`[PaymentPage] ⚠️ Order #${orderId} queued for background retry (path: ${notifResult.path}).`);
-        }
-      } else {
-        console.info(`[PaymentPage] ⏱️ Order #${orderId} notification timed out on client — backend/webhook will handle.`);
-      }
-
-      // 5. Clear cart and navigate to success page
+      // 3. Clear cart and navigate to Order Success page immediately without delay
       clearCart();
       navigate("/order-success", { replace: true, state: completedOrder });
     } catch (err) {

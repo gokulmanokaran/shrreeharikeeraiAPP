@@ -139,23 +139,26 @@ async function runE2ETestSuite() {
   await processPaymentHandler(procReq, procRes);
   const procResult = getProcRes();
   console.log("   process-payment result:", procResult.status, procResult.data);
+  const assignedOrderId = procResult.data?.orderId || testOrderId;
 
   // Verify in database
   const { data: savedOrder, error: fetchErr } = await adminClient
     .from("orders")
     .select("*")
-    .eq("id", testOrderId)
+    .eq("id", assignedOrderId)
     .single();
 
   const orderExists = !!savedOrder && !fetchErr;
   const orderPaid = savedOrder?.payment_status?.includes("Paid") && savedOrder?.razorpay_payment_id === paymentAttempt2SuccessId;
   const userLinked = savedOrder?.user_id === userA.id;
+  const isSequentialFormat = assignedOrderId.startsWith("ORD-");
 
-  console.log(`   - Order exists in DB: ${orderExists ? "YES ✅" : "NO ❌"}`);
+  console.log(`   - Order exists in DB: ${orderExists ? "YES ✅" : "NO ❌"} (ID: ${assignedOrderId})`);
+  console.log(`   - Order sequential format: ${isSequentialFormat ? "YES ✅" : "NO ❌"}`);
   console.log(`   - Order payment status: ${savedOrder?.payment_status} (Paid: ${orderPaid ? "YES ✅" : "NO ❌"})`);
   console.log(`   - Order linked to correct User A: ${userLinked ? "YES ✅" : "NO ❌"}`);
 
-  results["Order Created & Linked on Retry Success"] = (orderExists && orderPaid && userLinked) ? "PASS" : "FAIL";
+  results["Order Created & Linked on Retry Success"] = (orderExists && orderPaid && userLinked && isSequentialFormat) ? "PASS" : "FAIL";
 
   // Check stock deduction
   const { data: stockAfter } = await adminClient.from("products").select("stock_quantity").eq("id", testProduct.id).single();
@@ -169,7 +172,7 @@ async function runE2ETestSuite() {
   // ─────────────────────────────────────────────────────────────────────────────
   console.log("\n3. Testing Idempotency on Duplicate Submission & Webhook...");
   // Duplicate process-payment call (e.g. user refreshed or retried)
-  const { req: dupReq, res: dupRes, getResult: getDupRes } = mockReqRes("POST", orderPayload);
+  const { req: dupReq, res: dupRes, getResult: getDupRes } = mockReqRes("POST", { ...orderPayload, orderId: assignedOrderId });
   await processPaymentHandler(dupReq, dupRes);
   const dupResult = getDupRes();
   console.log("   Duplicate process-payment status:", dupResult.status, "alreadyProcessed:", dupResult.data?.alreadyProcessed);
@@ -185,7 +188,7 @@ async function runE2ETestSuite() {
           currency: "INR",
           status: "captured",
           notes: {
-            storefrontOrderId: testOrderId,
+            storefrontOrderId: assignedOrderId,
             userId: userA.id,
             customerEmail: userAEmail,
           },
@@ -203,9 +206,9 @@ async function runE2ETestSuite() {
   console.log(`   - Stock after duplicates: ${stockAfterDuplicates?.stock_quantity} (Unchanged: ${stockUnchanged ? "YES ✅" : "NO ❌"})`);
 
   // Verify exactly 1 order row exists
-  const { data: allOrderRows } = await adminClient.from("orders").select("id").eq("id", testOrderId);
+  const { data: allOrderRows } = await adminClient.from("orders").select("id").eq("id", assignedOrderId);
   const exactlyOneOrder = allOrderRows?.length === 1;
-  console.log(`   - Total orders with ID ${testOrderId}: ${allOrderRows?.length} (Exactly 1: ${exactlyOneOrder ? "YES ✅" : "NO ❌"})`);
+  console.log(`   - Total orders with ID ${assignedOrderId}: ${allOrderRows?.length} (Exactly 1: ${exactlyOneOrder ? "YES ✅" : "NO ❌"})`);
 
   results["Idempotency & Duplicate Prevention"] = (dupResult.data?.alreadyProcessed && stockUnchanged && exactlyOneOrder) ? "PASS" : "FAIL";
 
@@ -220,7 +223,7 @@ async function runE2ETestSuite() {
     .select("id, created_at, total, payment_status, items, address, city")
     .or(`user_id.eq.${userA.id},email.ilike.${userAEmail}`);
 
-  const userASeesOrder = userAOrders?.some(o => o.id === testOrderId);
+  const userASeesOrder = userAOrders?.some(o => o.id === assignedOrderId);
   console.log(`   - User A sees own retried order: ${userASeesOrder ? "YES ✅" : "NO ❌"}`);
 
   // User B queries Order History
@@ -229,7 +232,7 @@ async function runE2ETestSuite() {
     .select("id, created_at, total, payment_status, items, address, city")
     .or(`user_id.eq.${userB.id},email.ilike.${userBEmail}`);
 
-  const userBSeesUserAOrder = userBOrders?.some(o => o.id === testOrderId);
+  const userBSeesUserAOrder = userBOrders?.some(o => o.id === assignedOrderId);
   console.log(`   - User B CANNOT see User A order: ${!userBSeesUserAOrder ? "BLOCKED / SAFE ✅" : "LEAKED ❌"}`);
 
   results["Order History Visibility & Isolation"] = (userASeesOrder && !userBSeesUserAOrder) ? "PASS" : "FAIL";
@@ -238,7 +241,6 @@ async function runE2ETestSuite() {
   // SCENARIO 5: Webhook-Only Fallback (Browser Crashed / Tab Closed mid-payment)
   // ─────────────────────────────────────────────────────────────────────────────
   console.log("\n5. Testing Webhook-Only Fallback (Client tab dropped)...");
-  const webhookOnlyOrderId = `SHK_WH_${Date.now()}`;
   const webhookPaymentId = `pay_wh_${Date.now()}`;
 
   const { req: whOnlyReq, res: whOnlyRes, getResult: getWhOnlyRes } = mockReqRes("POST", {
@@ -253,7 +255,6 @@ async function runE2ETestSuite() {
           email: userAEmail,
           contact: "+919876543210",
           notes: {
-            storefrontOrderId: webhookOnlyOrderId,
             userId: userA.id,
             customerName: "Customer User A",
           },
@@ -264,15 +265,16 @@ async function runE2ETestSuite() {
   await razorpayWebhookHandler(whOnlyReq, whOnlyRes);
   const whOnlyResult = getWhOnlyRes();
   console.log("   Webhook fallback response:", whOnlyResult.status, whOnlyResult.data);
+  const whAssignedOrderId = whOnlyResult.data?.orderId;
 
-  const { data: whSavedOrder } = await adminClient.from("orders").select("*").eq("id", webhookOnlyOrderId).single();
-  const whOrderCreated = !!whSavedOrder && whSavedOrder.user_id === userA.id && whSavedOrder.payment_status?.includes("Paid");
-  console.log(`   - Webhook-only order created and linked to User A: ${whOrderCreated ? "YES ✅" : "NO ❌"}`);
+  const { data: whSavedOrder } = await adminClient.from("orders").select("*").eq("id", whAssignedOrderId).single();
+  const whOrderCreated = !!whSavedOrder && whSavedOrder.user_id === userA.id && whSavedOrder.payment_status?.includes("Paid") && whAssignedOrderId?.startsWith("ORD-");
+  console.log(`   - Webhook-only order created and linked to User A: ${whOrderCreated ? "YES ✅" : "NO ❌"} (ID: ${whAssignedOrderId})`);
 
   results["Webhook-Only Fallback Processing"] = whOrderCreated ? "PASS" : "FAIL";
 
   // Cleanup test orders
-  await adminClient.from("orders").delete().in("id", [testOrderId, webhookOnlyOrderId]);
+  await adminClient.from("orders").delete().in("id", [assignedOrderId, whAssignedOrderId]);
   await adminClient.from("products").update({ stock_quantity: initialStock }).eq("id", testProduct.id);
   console.log("\nCleaned up test orders and restored stock.");
 

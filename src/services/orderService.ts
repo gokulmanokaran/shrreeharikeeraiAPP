@@ -185,18 +185,20 @@ async function submitViaBackend(
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
+          keepalive: true,
         },
         15_000 // 15s per attempt
       );
 
       if (res.ok) {
         const data = await res.json();
+        const assignedOrderId = data.orderId || orderId;
         console.info(
-          `[OrderService] ✅ /api/process-payment succeeded | Order: ${orderId} | AlreadyProcessed: ${data.alreadyProcessed} | SheetsSync: ${data.sheetsSynced}`
+          `[OrderService] ✅ /api/process-payment succeeded | Order: ${assignedOrderId} | AlreadyProcessed: ${data.alreadyProcessed} | SheetsSync: ${data.sheetsSynced}`
         );
         return {
           success: true,
-          orderId,
+          orderId: assignedOrderId,
           alreadyProcessed: data.alreadyProcessed,
           message: data.message || "Order processed",
           path: "backend",
@@ -233,6 +235,7 @@ async function submitViaOrderWebhook(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
+        keepalive: true,
       },
       20_000
     );
@@ -413,9 +416,36 @@ export async function submitOrderNotification(
   // ── 1. Primary: /api/process-payment ──────────────────────────────────
   const backendResult = await submitViaBackend(requestBody, orderId, paymentId);
   if (backendResult?.success) {
+    const finalId = backendResult.orderId || orderId;
     markOrderNotified(orderId);
+    markOrderNotified(finalId);
+
+    // Sync authoritative sequential order ID to local storage caches
+    try {
+      const rawLatest = localStorage.getItem("shreehari_latest_order");
+      if (rawLatest) {
+        const parsed = JSON.parse(rawLatest);
+        if (parsed.orderId === orderId || !parsed.orderId?.startsWith("ORD-")) {
+          parsed.orderId = finalId;
+          localStorage.setItem("shreehari_latest_order", JSON.stringify(parsed));
+        }
+      }
+      const rawOrders = localStorage.getItem("shreehari_orders");
+      if (rawOrders) {
+        const parsedList = JSON.parse(rawOrders);
+        if (Array.isArray(parsedList)) {
+          const updated = parsedList.map((o: any) =>
+            o.orderId === orderId || o.id === orderId ? { ...o, id: finalId, orderId: finalId } : o
+          );
+          localStorage.setItem("shreehari_orders", JSON.stringify(updated));
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
     console.info(
-      `[OrderService] ✅ Order ${orderId} DONE via backend | Payment: ${paymentId} | Path: ${backendResult.path}`
+      `[OrderService] ✅ Order ${finalId} DONE via backend | Payment: ${paymentId} | Path: ${backendResult.path}`
     );
     return backendResult;
   }

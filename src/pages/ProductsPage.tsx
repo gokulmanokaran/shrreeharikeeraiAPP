@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Header } from "../components/layout/Header";
 import { CategoryScroller } from "../components/features/CategoryScroller";
@@ -24,24 +24,24 @@ export default function ProductsPage() {
     setActiveCategory(cat || "all");
   }, [searchParams]);
 
-  const handleSelectCategory = (cat: ProductCategory | "all") => {
+  const handleSelectCategory = useCallback((cat: ProductCategory | "all") => {
     setActiveCategory(cat);
     if (cat === "all") {
       setSearchParams({});
     } else {
       setSearchParams({ category: cat });
     }
-  };
+  }, [setSearchParams]);
 
-  const filtered =
-    activeCategory === "all"
-      ? products
-      : products.filter((p) => p.category === activeCategory || p.secondaryCategory === activeCategory);
+  const filtered = useMemo(() => {
+    if (activeCategory === "all") return products;
+    return products.filter((p) => p.category === activeCategory || p.secondaryCategory === activeCategory);
+  }, [products, activeCategory]);
 
-  const categoryLabel =
-    activeCategory === "all"
-      ? "All Products"
-      : categories.find((c) => c.id === activeCategory)?.name || activeCategory.replace(/-/g, " ");
+  const categoryLabel = useMemo(() => {
+    if (activeCategory === "all") return "All Products";
+    return categories.find((c) => c.id === activeCategory)?.name || activeCategory.replace(/-/g, " ");
+  }, [categories, activeCategory]);
 
   return (
     <>

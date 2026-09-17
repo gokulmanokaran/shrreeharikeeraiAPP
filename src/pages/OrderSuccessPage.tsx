@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/Button";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 interface SuccessState {
   orderId?: string;
@@ -58,7 +58,7 @@ export default function OrderSuccessPage() {
       if (stored) return JSON.parse(stored) as SuccessState;
     } catch { /* fallback */ }
     return {
-      orderId: "SHK782910",
+      orderId: "ORD-000001",
       total: 230,
       subtotal: 200,
       deliveryCharge: 30,
@@ -69,7 +69,43 @@ export default function OrderSuccessPage() {
     };
   }, [location.state]);
 
-  const orderId = order.orderId || "SHK782910";
+  const [liveOrderId, setLiveOrderId] = useState<string>(() => {
+    const stateOrder = location.state as SuccessState | null;
+    if (stateOrder?.orderId) return stateOrder.orderId;
+    try {
+      const stored = localStorage.getItem("shreehari_latest_order");
+      if (stored) {
+        const parsed = JSON.parse(stored) as SuccessState;
+        if (parsed.orderId) return parsed.orderId;
+      }
+    } catch { /* ignore */ }
+    return "ORD-000001";
+  });
+
+  useEffect(() => {
+    const checkLatest = () => {
+      try {
+        const stored = localStorage.getItem("shreehari_latest_order");
+        if (stored) {
+          const parsed = JSON.parse(stored) as SuccessState;
+          if (
+            parsed.orderId &&
+            parsed.orderId !== liveOrderId &&
+            (parsed.orderId.startsWith("ORD-") || !liveOrderId.startsWith("ORD-"))
+          ) {
+            setLiveOrderId(parsed.orderId);
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    checkLatest();
+    const timer = setInterval(checkLatest, 350);
+    return () => clearInterval(timer);
+  }, [liveOrderId]);
+
+  const orderId = liveOrderId || order.orderId || "ORD-000001";
   const total = order.total ?? 230;
   const subtotal = order.subtotal ?? total;
   const deliveryCharge = order.deliveryCharge ?? 30;

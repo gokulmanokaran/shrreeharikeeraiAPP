@@ -30,6 +30,23 @@ const EditProfilePage = lazy(() => import("./pages/EditProfilePage"));
 const OrdersPage = lazy(() => import("./pages/OrdersPage"));
 const AuthCallbackPage = lazy(() => import("./pages/AuthCallbackPage"));
 
+// Prefetch critical customer flow chunks in idle time for instant transitions
+if (typeof window !== "undefined") {
+  const prefetchRoutes = () => {
+    import("./pages/ProductsPage");
+    import("./pages/CartPage");
+    import("./pages/CheckoutPage");
+    import("./pages/PaymentPage");
+    import("./pages/OrderSuccessPage");
+  };
+
+  if ("requestIdleCallback" in window) {
+    (window as any).requestIdleCallback(prefetchRoutes, { timeout: 2500 });
+  } else {
+    setTimeout(prefetchRoutes, 1500);
+  }
+}
+
 import { TopSnackbar } from "./components/ui/TopSnackbar";
 import { FloatingCartButton } from "./components/features/FloatingCartButton";
 import { WeekendDeliveryBanner } from "./components/features/WeekendDeliveryBanner";

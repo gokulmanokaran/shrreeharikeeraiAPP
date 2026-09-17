@@ -197,6 +197,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [products, state.items]);
 
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const productsRef = useRef(products);
+  productsRef.current = products;
+
   // Persist to localStorage on every change
   useEffect(() => {
     setItem(STORAGE_KEYS.CART, state.items);
@@ -204,7 +209,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addItem = useCallback(
     (product: Product) => {
-      const liveProduct = findProductById(products, product.id) || product;
+      const currentProducts = productsRef.current;
+      const currentItems = stateRef.current.items;
+      const liveProduct = findProductById(currentProducts, product.id) || product;
 
       // 1. Out of stock guard
       if (
@@ -216,7 +223,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 2. Stock limit guard
-      const existing = state.items.find((i) => i.product.id === liveProduct.id);
+      const existing = currentItems.find((i) => i.product.id === liveProduct.id);
       const currentQty = existing ? existing.quantity : 0;
       if (liveProduct.stockQuantity !== undefined && currentQty >= liveProduct.stockQuantity) {
         triggerToast(
@@ -229,23 +236,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: "ADD", product: liveProduct });
       triggerToast(`✓ ${liveProduct.name} added to cart`, "add");
     },
-    [products, state.items, triggerToast]
+    [triggerToast]
   );
 
   const removeItem = useCallback(
     (productId: string) => {
-      const item = state.items.find((i) => i.product.id === productId);
+      const item = stateRef.current.items.find((i) => i.product.id === productId);
       const name = item ? item.product.name : "Item";
       dispatch({ type: "REMOVE", productId });
       triggerToast(`✓ ${name} removed from cart`, "remove");
     },
-    [state.items, triggerToast]
+    [triggerToast]
   );
 
   const incrementItem = useCallback(
     (productId: string) => {
-      const item = state.items.find((i) => i.product.id === productId);
-      const live = findProductById(products, productId) || item?.product;
+      const currentProducts = productsRef.current;
+      const item = stateRef.current.items.find((i) => i.product.id === productId);
+      const live = findProductById(currentProducts, productId) || item?.product;
       if (item && live) {
         // Stock limit guard
         if (
@@ -263,12 +271,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
       dispatch({ type: "INCREMENT", productId });
     },
-    [products, state.items, triggerToast]
+    [triggerToast]
   );
 
   const decrementItem = useCallback(
     (productId: string) => {
-      const item = state.items.find((i) => i.product.id === productId);
+      const item = stateRef.current.items.find((i) => i.product.id === productId);
       if (item) {
         if (item.quantity === 1) {
           triggerToast(`✓ ${item.product.name} removed from cart`, "remove");
@@ -276,7 +284,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
       dispatch({ type: "DECREMENT", productId });
     },
-    [state.items, triggerToast]
+    [triggerToast]
   );
 
   const clearCart = useCallback(() => {
@@ -285,8 +293,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const getItemQuantity = useCallback(
     (productId: string) =>
-      state.items.find((i) => i.product.id === productId)?.quantity ?? 0,
-    [state.items]
+      stateRef.current.items.find((i) => i.product.id === productId)?.quantity ?? 0,
+    []
   );
 
   const itemCount = useMemo(

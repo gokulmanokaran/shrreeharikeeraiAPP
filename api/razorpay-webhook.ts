@@ -25,19 +25,23 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import crypto from "crypto";
-import { handleCors, parseApiRequest, sendApiResponse } from "./_catalog.js";
+import {
+  handleCors,
+  parseApiRequest,
+  sendApiResponse,
+  getOrGenerateSequentialOrderId,
+  sanitizeString,
+  safeTimingEqual,
+} from "./_catalog.js";
 import { getSupabaseServerClient } from "./_supabase.js";
 
 // ── Webhook Signature Verification ───────────────────────────────────────────
 
 function verifyWebhookSignature(rawBody: string, signature: string, secret: string): boolean {
-  if (!signature || typeof signature !== "string") return false;
+  if (!signature || typeof signature !== "string" || !secret) return false;
   try {
     const generated = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-    const genBuf = Buffer.from(generated);
-    const sigBuf = Buffer.from(signature);
-    if (genBuf.length !== sigBuf.length) return false;
-    return crypto.timingSafeEqual(genBuf, sigBuf);
+    return safeTimingEqual(generated, signature);
   } catch {
     return false;
   }
@@ -336,19 +340,22 @@ export default async function handler(req: any, res?: any): Promise<any> {
     }
   } else {
     // Minimal payload from Razorpay webhook data only (browser data was lost)
-    const fallbackOrderId = storefrontOrderId || `SHK-WEBHOOK-${razorpayPaymentId}`;
+    const fallbackOrderId = await getOrGenerateSequentialOrderId(
+      supabase,
+      razorpayPaymentId,
+      storefrontOrderId
+    );
     const formattedDate = new Date(
       (paymentEntity.created_at || Date.now() / 1000) * 1000
     ).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
 
     console.warn(
-      `[razorpay-webhook] ⚠️ No Supabase record for storefront order ${storefrontOrderId}. ` +
-      `This means the browser never called /api/process-payment. ` +
-      `Resolving user and persisting from webhook.`
+      `[razorpay-webhook] ⚠️ No Supabase record for payment ${razorpayPaymentId}. ` +
+      `Assigning sequential order ${fallbackOrderId} and persisting from webhook.`
     );
 
-    const customerEmail = paymentEntity.email || notes.customerEmail || "";
-    let targetUserId = notes.userId || null;
+    const customerEmail = sanitizeString(paymentEntity.email || notes.customerEmail || "", 100);
+    let targetUserId = notes.userId ? sanitizeString(notes.userId, 64) : null;
     if (!targetUserId && customerEmail && supabase) {
       try {
         const { data: userList } = await supabase.auth.admin.listUsers();
@@ -361,16 +368,16 @@ export default async function handler(req: any, res?: any): Promise<any> {
 
     gasPayload = {
       orderId: fallbackOrderId,
-      fullName: paymentEntity.notes?.customerName || notes.fullName || "Unknown Customer",
-      mobile: paymentEntity.contact?.replace("+91", "") || "",
+      fullName: sanitizeString(paymentEntity.notes?.customerName || notes.fullName || "Customer", 100),
+      mobile: sanitizeString(paymentEntity.contact?.replace("+91", "") || "", 15),
       email: customerEmail,
-      address: notes.address || "See Razorpay Dashboard",
+      address: sanitizeString(notes.address || "See Razorpay Dashboard", 300),
       total: amountInRupees,
       subtotal: amountInRupees,
       deliveryCharge: 0,
       discount: 0,
       items: [],
-      productsSummary: notes.productsSummary || "See Razorpay Dashboard",
+      productsSummary: sanitizeString(notes.productsSummary || "See Razorpay Dashboard", 200),
       totalQuantity: 1,
       paymentId: razorpayPaymentId,
       razorpayPaymentId,
@@ -416,9 +423,11 @@ export default async function handler(req: any, res?: any): Promise<any> {
   // ── 6. Forward to Google Apps Script ──────────────────────────────────────
   const gasResult = await forwardToGoogleAppsScript(webhookUrl, gasPayload, 3);
 
+  const finalOrderId = (gasPayload?.orderId as string) || storefrontOrderId || existingOrder?.id;
+
   // ── 7. Update Supabase notification status ────────────────────────────────
-  if (supabase && (storefrontOrderId || existingOrder?.id)) {
-    const targetId = storefrontOrderId || existingOrder?.id;
+  if (supabase && finalOrderId) {
+    const targetId = finalOrderId;
     const currentRetryCount = existingOrder?.retry_count || 0;
     try {
       await supabase
@@ -441,11 +450,11 @@ export default async function handler(req: any, res?: any): Promise<any> {
   // ── 8. Log outcome ────────────────────────────────────────────────────────
   if (gasResult.success) {
     console.info(
-      `[razorpay-webhook] ✅ WEBHOOK ORDER ${storefrontOrderId} PROCESSED | Payment: ${razorpayPaymentId} | Sheets: ✅ | Email: ✅ | Attempts: ${gasResult.attempts}`
+      `[razorpay-webhook] ✅ WEBHOOK ORDER ${finalOrderId} PROCESSED | Payment: ${razorpayPaymentId} | Sheets: ✅ | Email: ✅ | Attempts: ${gasResult.attempts}`
     );
   } else {
     console.error(
-      `[razorpay-webhook] ❌ WEBHOOK ORDER ${storefrontOrderId} GAS FAILED | Payment: ${razorpayPaymentId} | Error: ${gasResult.lastError} | Attempts: ${gasResult.attempts}`
+      `[razorpay-webhook] ❌ WEBHOOK ORDER ${finalOrderId} GAS FAILED | Payment: ${razorpayPaymentId} | Error: ${gasResult.lastError} | Attempts: ${gasResult.attempts}`
     );
   }
 
@@ -454,7 +463,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
     received: true,
     event: eventType,
     processed: true,
-    orderId: storefrontOrderId,
+    orderId: finalOrderId,
     paymentId: razorpayPaymentId,
     sheetsSynced: gasResult.success,
   });
