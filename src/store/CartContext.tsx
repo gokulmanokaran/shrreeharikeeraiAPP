@@ -8,9 +8,11 @@ import React, {
   useRef,
   useState,
 } from "react";
-import type { Product } from "../data/products";
+import { Product } from "../data/products";
 import { getItem, setItem, STORAGE_KEYS } from "../utils/storage";
 import { calculateDiscount, type DiscountResult } from "../utils/price";
+import { useProductCatalog } from "./ProductContext";
+import { findProductById } from "../services/productService";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +39,46 @@ type CartAction =
   | { type: "CLEAR" }
   | { type: "HYDRATE"; items: CartItem[] };
 
+// ── Helper: Sync cart items with latest product catalog ───────────────────────
+
+function syncItemsWithCatalog(
+  items: CartItem[],
+  catalog: Product[]
+): { updated: CartItem[]; hasChanged: boolean } {
+  if (!catalog || catalog.length === 0 || !items || items.length === 0) {
+    return { updated: items, hasChanged: false };
+  }
+
+  let hasChanged = false;
+  const updated = items.map((item) => {
+    const live = findProductById(catalog, item.product.id);
+    if (!live) return item;
+
+    if (
+      item.product.price !== live.price ||
+      item.product.mrp !== live.mrp ||
+      item.product.inStock !== live.inStock ||
+      item.product.stockQuantity !== live.stockQuantity ||
+      item.product.name !== live.name ||
+      item.product.nameTamil !== live.nameTamil ||
+      item.product.image !== live.image ||
+      item.product.unit !== live.unit
+    ) {
+      hasChanged = true;
+      return {
+        ...item,
+        product: {
+          ...item.product,
+          ...live,
+        },
+      };
+    }
+    return item;
+  });
+
+  return { updated, hasChanged };
+}
+
 // ── Reducer ──────────────────────────────────────────────────────────────────
 
 function cartReducer(state: CartState, action: CartAction): CartState {
@@ -52,7 +94,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
         return {
           items: state.items.map((i) =>
             i.product.id === action.product.id
-              ? { ...i, quantity: i.quantity + 1 }
+              ? { ...i, product: { ...i.product, ...action.product }, quantity: i.quantity + 1 }
               : i
           ),
         };
@@ -121,6 +163,7 @@ const CartContext = createContext<CartContextValue | null>(null);
 // ── Provider ─────────────────────────────────────────────────────────────────
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
+  const { products } = useProductCatalog();
   const [state, dispatch] = useReducer(cartReducer, { items: [] });
   const [toast, setToast] = useState<ToastNotification | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -136,13 +179,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }, 2200);
   }, []);
 
-  // Hydrate from localStorage on mount
+  // Hydrate from localStorage on mount (and sync with current products if available)
   useEffect(() => {
     const saved = getItem<CartItem[]>(STORAGE_KEYS.CART, []);
     if (saved.length > 0) {
-      dispatch({ type: "HYDRATE", items: saved });
+      const { updated } = syncItemsWithCatalog(saved, products);
+      dispatch({ type: "HYDRATE", items: updated });
     }
   }, []);
+
+  // Synchronize cart items with the latest live products (e.g. price change in admin / DB / realtime sync)
+  useEffect(() => {
+    if (state.items.length === 0 || !products || products.length === 0) return;
+    const { updated, hasChanged } = syncItemsWithCatalog(state.items, products);
+    if (hasChanged) {
+      dispatch({ type: "HYDRATE", items: updated });
+    }
+  }, [products, state.items]);
 
   // Persist to localStorage on every change
   useEffect(() => {
@@ -151,30 +204,32 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addItem = useCallback(
     (product: Product) => {
+      const liveProduct = findProductById(products, product.id) || product;
+
       // 1. Out of stock guard
       if (
-        product.inStock === false ||
-        (product.stockQuantity !== undefined && product.stockQuantity <= 0)
+        liveProduct.inStock === false ||
+        (liveProduct.stockQuantity !== undefined && liveProduct.stockQuantity <= 0)
       ) {
-        triggerToast(`⚠️ Sorry, ${product.name} is out of stock`, "remove");
+        triggerToast(`⚠️ Sorry, ${liveProduct.name} is out of stock`, "remove");
         return;
       }
 
       // 2. Stock limit guard
-      const existing = state.items.find((i) => i.product.id === product.id);
+      const existing = state.items.find((i) => i.product.id === liveProduct.id);
       const currentQty = existing ? existing.quantity : 0;
-      if (product.stockQuantity !== undefined && currentQty >= product.stockQuantity) {
+      if (liveProduct.stockQuantity !== undefined && currentQty >= liveProduct.stockQuantity) {
         triggerToast(
-          `⚠️ Only ${product.stockQuantity} unit${product.stockQuantity === 1 ? "" : "s"} available in stock`,
+          `⚠️ Only ${liveProduct.stockQuantity} unit${liveProduct.stockQuantity === 1 ? "" : "s"} available in stock`,
           "remove"
         );
         return;
       }
 
-      dispatch({ type: "ADD", product });
-      triggerToast(`✓ ${product.name} added to cart`, "add");
+      dispatch({ type: "ADD", product: liveProduct });
+      triggerToast(`✓ ${liveProduct.name} added to cart`, "add");
     },
-    [state.items, triggerToast]
+    [products, state.items, triggerToast]
   );
 
   const removeItem = useCallback(
@@ -190,24 +245,25 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const incrementItem = useCallback(
     (productId: string) => {
       const item = state.items.find((i) => i.product.id === productId);
-      if (item) {
+      const live = findProductById(products, productId) || item?.product;
+      if (item && live) {
         // Stock limit guard
         if (
-          item.product.stockQuantity !== undefined &&
-          item.quantity >= item.product.stockQuantity
+          live.stockQuantity !== undefined &&
+          item.quantity >= live.stockQuantity
         ) {
           triggerToast(
-            `⚠️ Maximum available stock reached (${item.product.stockQuantity} units)`,
+            `⚠️ Maximum available stock reached (${live.stockQuantity} units)`,
             "remove"
           );
           return;
         }
 
-        triggerToast(`✓ ${item.product.name} added to cart`, "add");
+        triggerToast(`✓ ${live.name} added to cart`, "add");
       }
       dispatch({ type: "INCREMENT", productId });
     },
-    [state.items, triggerToast]
+    [products, state.items, triggerToast]
   );
 
   const decrementItem = useCallback(
