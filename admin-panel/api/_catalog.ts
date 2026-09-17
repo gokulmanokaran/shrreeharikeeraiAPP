@@ -481,7 +481,7 @@ export async function getOrGenerateSequentialOrderId(
         .select("id")
         .eq("razorpay_payment_id", paymentId)
         .maybeSingle();
-      if (existingByPayment?.id && /^SHK-\d+$/i.test(existingByPayment.id)) {
+      if (existingByPayment?.id && /^SHK-?\d+$/i.test(existingByPayment.id)) {
         return existingByPayment.id;
       }
     } catch {
@@ -490,7 +490,7 @@ export async function getOrGenerateSequentialOrderId(
   }
 
   // 2. Check if clientOrderId already exists in DB with valid sequential format
-  if (supabase && clientOrderId && /^SHK-\d+$/i.test(clientOrderId)) {
+  if (supabase && clientOrderId && /^SHK-?\d+$/i.test(clientOrderId)) {
     try {
       const { data: existingById } = await supabase
         .from("orders")
@@ -511,14 +511,14 @@ export async function getOrGenerateSequentialOrderId(
       const { data: orderRows } = await supabase
         .from("orders")
         .select("id")
-        .like("id", "SHK-%")
+        .like("id", "SHK%")
         .limit(10000);
 
       let maxSeq = 0;
       if (Array.isArray(orderRows)) {
         for (const row of orderRows) {
           const idStr = String(row?.id || "").trim();
-          const match = idStr.match(/^SHK-(\d+)$/i);
+          const match = idStr.match(/^SHK-?(\d{1,5})$/i);
           if (match) {
             const num = parseInt(match[1], 10);
             if (!isNaN(num) && num > maxSeq) {
@@ -531,11 +531,12 @@ export async function getOrGenerateSequentialOrderId(
       // Strict increment: if highest in DB is 25, next is 26
       let candidateNum = maxSeq + 1;
       for (let attempt = 0; attempt < 100; attempt++) {
-        const candidateId = `SHK-${String(candidateNum).padStart(5, "0")}`;
+        const candidateId = `SHK${String(candidateNum).padStart(5, "0")}`;
+        const altId = `SHK-${String(candidateNum).padStart(5, "0")}`;
         const { data: conflict } = await supabase
           .from("orders")
           .select("id")
-          .eq("id", candidateId)
+          .in("id", [candidateId, altId])
           .maybeSingle();
 
         if (!conflict) {
@@ -549,7 +550,7 @@ export async function getOrGenerateSequentialOrderId(
   }
 
   // 4. Default baseline fallback
-  return "SHK-00001";
+  return "SHK00001";
 }
 
 

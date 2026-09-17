@@ -236,7 +236,7 @@ async function upsertOrderToSupabase(
           );
           return { alreadyProcessed: true, existingOrder: existingByPayment, finalOrderId: existingByPayment.id };
         }
-        if (existingByPayment.id && /^SHK-\d+$/i.test(existingByPayment.id)) {
+        if (existingByPayment.id && /^SHK-?\d+$/i.test(existingByPayment.id)) {
           existingOrderRow = existingByPayment;
           assignedOrderId = existingByPayment.id;
         }

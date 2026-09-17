@@ -170,8 +170,11 @@ export default function PaymentPage() {
         return;
       }
 
-      // ── Payment Succeeded (First attempt, in-modal retry, or on-page retry) ───
+      // ── Payment Succeeded ───
+      setIsProcessing(true);
+      setIsSaving(true);
       isNavigatingRef.current = true;
+
       const razorpayPaymentId = paymentResult.razorpayPaymentId || "";
       const razorpayOrderId = paymentResult.razorpayOrderId || "";
       const razorpaySignature = paymentResult.razorpaySignature || "";
@@ -187,16 +190,31 @@ export default function PaymentPage() {
         razorpaySignature,
       };
 
-      // 1. Immediately persist completed order locally for instant OrderSuccessPage rendering
+      // 1. Authoritative backend order creation, sequential ID assignment, stock deduction & email sync
+      let finalOrderId = pendingOrder.orderId;
       try {
-        localStorage.setItem("shreehari_latest_order", JSON.stringify(completedOrder));
+        const orderResult = await submitOrderNotification(completedOrder);
+        if (orderResult?.orderId && /^SHK-?\d+$/i.test(orderResult.orderId)) {
+          finalOrderId = orderResult.orderId;
+        }
+      } catch (submitErr) {
+        console.warn(`[PaymentPage] Order submission warning:`, submitErr);
+      }
+
+      const finalizedOrder: OrderNotificationPayload = {
+        ...completedOrder,
+        orderId: finalOrderId,
+      };
+
+      // 2. Persist finalized order locally with the real sequential ID for offline/immediate cache
+      try {
+        localStorage.setItem("shreehari_latest_order", JSON.stringify(finalizedOrder));
         const existingRaw = localStorage.getItem("shreehari_orders");
         const existing = existingRaw ? JSON.parse(existingRaw) : [];
-        // Prevent duplicate entries in local history
-        const filtered = existing.filter((o: any) => o.id !== completedOrder.orderId && o.orderId !== completedOrder.orderId);
+        const filtered = existing.filter((o: any) => o.id !== finalOrderId && o.orderId !== finalOrderId && o.id !== pendingOrder.orderId && o.orderId !== pendingOrder.orderId);
         localStorage.setItem(
           "shreehari_orders",
-          JSON.stringify([completedOrder, ...filtered])
+          JSON.stringify([finalizedOrder, ...filtered])
         );
         sessionStorage.removeItem(PENDING_ORDER_KEY);
         localStorage.removeItem(PENDING_ORDER_KEY);
@@ -204,16 +222,12 @@ export default function PaymentPage() {
         /* ignore */
       }
 
-      // 2. Dispatch backend order persistence, stock deduction & email notifications in background (non-blocking)
-      submitOrderNotification(completedOrder).catch((err) => {
-        console.warn(`[PaymentPage] Background order submission notification error:`, err);
-      });
-      deductLiveProductStock(completedOrder.items).catch(() => {});
+      deductLiveProductStock(finalizedOrder.items).catch(() => {});
       refreshProducts().catch(() => {});
 
-      // 3. Clear cart and navigate to Order Success page immediately without delay
+      // 3. Clear cart and navigate to Order Success page with the real sequential order
       clearCart();
-      navigate("/order-success", { replace: true, state: completedOrder });
+      navigate("/order-success", { replace: true, state: finalizedOrder });
     } catch (err) {
       setIsProcessing(false);
       setIsSaving(false);

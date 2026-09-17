@@ -43,15 +43,15 @@ function mockReqRes(method: string, body: any) {
 
 async function testJumpSequence() {
   console.log("================================================================================");
-  console.log("TESTING EXACT PROMPT SCENARIO: LAST ORDER SHK-00025 -> NEXT SHK-00026, SHK-00027");
+  console.log("TESTING EXACT PROMPT SCENARIO: LAST ORDER SHK00025 -> NEXT SHK00026, SHK00027, SHK00028");
   console.log("================================================================================\n");
 
-  const seededIds = ["SHK-00021", "SHK-00022", "SHK-00023", "SHK-00024", "SHK-00025"];
+  const seededIds = ["SHK00021", "SHK00022", "SHK00023", "SHK00024", "SHK00025"];
   const createdIds: string[] = [];
 
   try {
-    // 1. Seed SHK-00021 to SHK-00025 into orders table
-    console.log("1. Seeding orders SHK-00021 through SHK-00025...");
+    // 1. Seed SHK00021 to SHK00025 into orders table
+    console.log("1. Seeding orders SHK00021 through SHK00025...");
     for (const seedId of seededIds) {
       await adminClient.from("orders").insert({
         id: seedId,
@@ -69,10 +69,10 @@ async function testJumpSequence() {
     // 2. Query next sequence ID directly
     const nextDirect = await getOrGenerateSequentialOrderId(adminClient);
     console.log("2. Direct sequence generator check:", nextDirect);
-    if (nextDirect !== "SHK-00026") {
-      throw new Error(`Expected next order ID to be SHK-00026, got: ${nextDirect}`);
+    if (nextDirect !== "SHK00026") {
+      throw new Error(`Expected next order ID to be SHK00026, got: ${nextDirect}`);
     }
-    console.log("   ✅ Direct query returned exactly SHK-00026");
+    console.log("   ✅ Direct query returned exactly SHK00026");
 
     // 3. Place order via /api/process-payment
     console.log("3. Placing order via /api/process-payment...");
@@ -91,11 +91,11 @@ async function testJumpSequence() {
     await processPaymentHandler(r26, res26);
     const result26 = gr26();
     console.log("   Response 26:", result26.data);
-    if (result26.data.orderId !== "SHK-00026") {
-      throw new Error(`Expected order ID SHK-00026, got ${result26.data.orderId}`);
+    if (result26.data.orderId !== "SHK00026") {
+      throw new Error(`Expected order ID SHK00026, got ${result26.data.orderId}`);
     }
-    createdIds.push("SHK-00026");
-    console.log("   ✅ Order successfully created with ID: SHK-00026");
+    createdIds.push("SHK00026");
+    console.log("   ✅ Order successfully created with ID: SHK00026");
 
     // 4. Place next order via /api/process-payment
     console.log("4. Placing second order via /api/process-payment...");
@@ -114,11 +114,11 @@ async function testJumpSequence() {
     await processPaymentHandler(r27, res27);
     const result27 = gr27();
     console.log("   Response 27:", result27.data);
-    if (result27.data.orderId !== "SHK-00027") {
-      throw new Error(`Expected order ID SHK-00027, got ${result27.data.orderId}`);
+    if (result27.data.orderId !== "SHK00027") {
+      throw new Error(`Expected order ID SHK00027, got ${result27.data.orderId}`);
     }
-    createdIds.push("SHK-00027");
-    console.log("   ✅ Order successfully created with ID: SHK-00027");
+    createdIds.push("SHK00027");
+    console.log("   ✅ Order successfully created with ID: SHK00027");
 
     // 5. Place third order via /api/process-payment
     console.log("5. Placing third order via /api/process-payment...");
@@ -137,14 +137,14 @@ async function testJumpSequence() {
     await processPaymentHandler(r28, res28);
     const result28 = gr28();
     console.log("   Response 28:", result28.data);
-    if (result28.data.orderId !== "SHK-00028") {
-      throw new Error(`Expected order ID SHK-00028, got ${result28.data.orderId}`);
+    if (result28.data.orderId !== "SHK00028") {
+      throw new Error(`Expected order ID SHK00028, got ${result28.data.orderId}`);
     }
-    createdIds.push("SHK-00028");
-    console.log("   ✅ Order successfully created with ID: SHK-00028");
+    createdIds.push("SHK00028");
+    console.log("   ✅ Order successfully created with ID: SHK00028");
 
     console.log("\n================================================================================");
-    console.log("EXACT USER SCENARIO PASSED (SHK-00025 -> SHK-00026 -> SHK-00027 -> SHK-00028) 🎉");
+    console.log("EXACT USER SCENARIO PASSED (SHK00025 -> SHK00026 -> SHK00027 -> SHK00028) 🎉");
     console.log("================================================================================");
   } finally {
     const allToClean = [...seededIds, ...createdIds];

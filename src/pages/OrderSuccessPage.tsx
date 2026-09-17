@@ -58,7 +58,7 @@ export default function OrderSuccessPage() {
       if (stored) return JSON.parse(stored) as SuccessState;
     } catch { /* fallback */ }
     return {
-      orderId: "SHK-00001",
+      orderId: "SHK00001",
       total: 230,
       subtotal: 200,
       deliveryCharge: 30,
@@ -74,11 +74,11 @@ export default function OrderSuccessPage() {
       const stored = localStorage.getItem("shreehari_latest_order");
       if (stored) {
         const parsed = JSON.parse(stored) as SuccessState;
-        if (parsed.orderId && /^SHK-\d+$/i.test(parsed.orderId)) return parsed.orderId;
+        if (parsed.orderId && /^SHK-?\d+$/i.test(parsed.orderId)) return parsed.orderId;
       }
     } catch { /* ignore */ }
     const stateOrder = location.state as SuccessState | null;
-    if (stateOrder?.orderId && /^SHK-\d+$/i.test(stateOrder.orderId)) return stateOrder.orderId;
+    if (stateOrder?.orderId && /^SHK-?\d+$/i.test(stateOrder.orderId)) return stateOrder.orderId;
     return "";
   });
 
@@ -90,7 +90,7 @@ export default function OrderSuccessPage() {
           const parsed = JSON.parse(stored) as SuccessState;
           if (
             parsed.orderId &&
-            /^SHK-\d+$/i.test(parsed.orderId) &&
+            /^SHK-?\d+$/i.test(parsed.orderId) &&
             parsed.orderId !== liveOrderId
           ) {
             setLiveOrderId(parsed.orderId);
@@ -107,7 +107,7 @@ export default function OrderSuccessPage() {
 
   const orderId =
     liveOrderId ||
-    (order.orderId && /^SHK-\d+$/i.test(order.orderId) ? order.orderId : "SHK-00001");
+    (order.orderId && /^SHK-?\d+$/i.test(order.orderId) ? order.orderId : "SHK00001");
   const total = order.total ?? 230;
   const subtotal = order.subtotal ?? total;
   const deliveryCharge = order.deliveryCharge ?? 30;
