@@ -137,7 +137,7 @@ export function ProductFormModal({
         unit: unit.trim(),
         quantity: quantity.trim() || unit.trim(),
         category,
-        secondaryCategory: secondaryCategory.trim() || undefined,
+        secondaryCategory: secondaryCategory.trim(),
         image: image.trim(),
         inStock,
         stockQuantity: stockQuantity !== undefined ? Number(stockQuantity) : undefined,

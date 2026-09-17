@@ -280,7 +280,7 @@ export async function updateProduct(product: Partial<Product> & { id: string }):
     if (product.unit !== undefined) dbPayload.unit = product.unit;
     if (product.quantity !== undefined) dbPayload.quantity = product.quantity;
     if (product.category !== undefined) dbPayload.category = product.category;
-    if (product.secondaryCategory !== undefined) dbPayload.secondary_category = product.secondaryCategory;
+    if (product.secondaryCategory !== undefined) dbPayload.secondary_category = product.secondaryCategory || "";
     if (product.image !== undefined) {
       dbPayload.image = product.image;
       dbPayload.image_url = product.image;

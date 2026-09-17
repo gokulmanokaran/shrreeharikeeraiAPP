@@ -233,6 +233,12 @@ export default async function handler(req: any, res?: any): Promise<any> {
             : current.tamilName,
         price: updateData.price !== undefined ? Number(updateData.price) : current.price,
         mrp: updateData.mrp !== undefined ? Number(updateData.mrp) : current.mrp ?? current.price,
+        secondaryCategory:
+          updateData.secondaryCategory !== undefined
+            ? updateData.secondaryCategory || undefined
+            : updateData.secondary_category !== undefined
+            ? updateData.secondary_category || undefined
+            : current.secondaryCategory,
         stockQuantity: parsedStock,
         inStock: effectiveInStock,
         updatedAt: new Date().toISOString(),

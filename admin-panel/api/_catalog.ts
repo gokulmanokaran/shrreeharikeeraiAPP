@@ -23,6 +23,7 @@ export interface Product {
   unit: string;
   quantity?: string;
   category: string;
+  secondaryCategory?: string;
   description?: string;
   shortDescription?: string;
   note?: string;
@@ -59,6 +60,7 @@ function mapDbProduct(row: any): Product {
     unit: row.unit || "1 Pack",
     quantity: row.quantity || row.unit || "1 Pack",
     category: row.category,
+    secondaryCategory: row.secondary_category || row.secondaryCategory || undefined,
     image: row.image || row.image_url || "",
     description: row.description || "",
     shortDescription: row.short_description || "",
@@ -155,6 +157,7 @@ export async function saveCloudProducts(products: Product[]): Promise<StorageSta
         unit: p.unit || "1 Pack",
         quantity: p.quantity || p.unit || "1 Pack",
         category: p.category || "keerai",
+        secondary_category: p.secondaryCategory || "",
         image: p.image || "",
         image_url: p.image || "",
         description: p.description || "",
