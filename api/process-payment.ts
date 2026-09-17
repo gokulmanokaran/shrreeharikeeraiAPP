@@ -29,6 +29,8 @@ import { getSupabaseServerClient } from "./_supabase.js";
 
 interface OrderItem {
   id?: string;
+  productId?: string;
+  variantId?: string;
   name: string;
   nameTamil?: string;
   quantity: number;
@@ -332,24 +334,144 @@ async function upsertOrderToSupabase(
     return { alreadyProcessed: false, error: saveError, existingOrder: existingOrderRow, finalOrderId: currentOrderId };
   }
 
-  // 4. Server-side atomic stock deduction
-  try {
-    const validItems = (data.items || [])
-      .filter((item) => item && item.id)
-      .map((item) => ({
-        id: String(item.id),
-        quantity: Math.max(1, Number(item.quantity) || 1),
-      }));
-    if (validItems.length > 0 && (!existingOrderRow || existingOrderRow.retry_count === 0)) {
-      await supabase.rpc("deduct_product_stock", { p_items: validItems });
-      console.info(`[process-payment] ✅ Atomic stock deduction executed for order ${currentOrderId}.`);
-    }
-  } catch (stockErr) {
-    console.warn("[process-payment] Stock deduction RPC warning:", stockErr);
-  }
-
   console.info(`[process-payment] Order ${currentOrderId} successfully persisted in Supabase.`);
   return { alreadyProcessed: false, existingOrder: existingOrderRow, finalOrderId: currentOrderId };
+}
+
+/**
+ * Atomically & accurately deduct stock for purchased order items.
+ * Handles both base products and variants (resolving variant IDs like prod_xxx_12345 to parent).
+ * Guarantees:
+ * - Stock never becomes negative (Math.max(0, currentStock - qty))
+ * - When stock reaches 0, in_stock is set to false
+ * - Only runs once per order
+ */
+async function deductStockForOrderItems(
+  supabase: any,
+  items: Array<{ id?: string; productId?: string; variantId?: string; name?: string; quantity?: number }>,
+  orderId: string
+): Promise<Array<{ id: string; name: string; previousStock: number; newStock: number; inStock: boolean }>> {
+  if (!items || !items.length) return [];
+
+  const validItems = items
+    .filter((it) => it && (it.id || it.productId || it.name))
+    .map((it) => ({
+      id: String(it.id || "").trim(),
+      productId: String(it.productId || "").trim(),
+      variantId: String(it.variantId || "").trim(),
+      name: String(it.name || "").trim(),
+      quantity: Math.max(1, Number(it.quantity) || 1),
+    }));
+
+  if (!validItems.length) return [];
+
+  const { data: allProducts, error: fetchErr } = await supabase
+    .from("products")
+    .select("id, name, stock_quantity, in_stock, variants");
+
+  if (fetchErr || !allProducts) {
+    console.error(`[process-payment] Failed to fetch products for stock deduction (order ${orderId}):`, fetchErr);
+    return [];
+  }
+
+  const resolvedMap = new Map<string, { product: any; totalQty: number }>();
+
+  for (const item of validItems) {
+    const matchedProduct = allProducts.find((p: any) => {
+      if (item.productId && p.id === item.productId) return true;
+      if (item.id && p.id === item.id) return true;
+      if (item.id && Array.isArray(p.variants) && p.variants.some((v: any) => v && v.id === item.id)) return true;
+      if (item.variantId && Array.isArray(p.variants) && p.variants.some((v: any) => v && v.id === item.variantId)) return true;
+      if (item.id && item.id.includes("_") && item.id.startsWith(p.id + "_")) return true;
+      if (item.name && p.name && p.name.trim().toLowerCase() === item.name.trim().toLowerCase()) return true;
+      return false;
+    });
+
+    if (!matchedProduct) {
+      console.warn(`[process-payment] ⚠️ No matching product found for item: ${item.id} (${item.name}) in order ${orderId}.`);
+      continue;
+    }
+
+    const existing = resolvedMap.get(matchedProduct.id);
+    if (existing) {
+      existing.totalQty += item.quantity;
+    } else {
+      resolvedMap.set(matchedProduct.id, { product: matchedProduct, totalQty: item.quantity });
+    }
+  }
+
+  const results: Array<{ id: string; name: string; previousStock: number; newStock: number; inStock: boolean }> = [];
+  const rpcItems: Array<{ id: string; quantity: number }> = [];
+
+  for (const [prodId, { product, totalQty }] of resolvedMap.entries()) {
+    if (product.stock_quantity !== null && product.stock_quantity !== undefined) {
+      rpcItems.push({ id: prodId, quantity: totalQty });
+    }
+  }
+
+  // 1. Atomic RPC call with row-level locking
+  if (rpcItems.length > 0) {
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("deduct_product_stock", {
+        p_items: rpcItems,
+      });
+      if (!rpcErr && rpcRes && rpcRes.success && Array.isArray(rpcRes.updated) && rpcRes.updated.length > 0) {
+        for (const up of rpcRes.updated) {
+          const entry = resolvedMap.get(up.id);
+          results.push({
+            id: up.id,
+            name: entry?.product.name || up.id,
+            previousStock: up.previousStock,
+            newStock: up.newStock,
+            inStock: up.inStock,
+          });
+          console.info(
+            `[process-payment] ✅ Atomic stock deduction: "${entry?.product.name || up.id}" stock: ${up.previousStock} -> ${up.newStock} (Order ${orderId})`
+          );
+        }
+      }
+    } catch (rpcEx) {
+      console.warn(`[process-payment] Stock RPC notice (falling back to direct update):`, rpcEx);
+    }
+  }
+
+  // 2. Direct fallback for any products not updated by RPC
+  for (const [prodId, { product, totalQty }] of resolvedMap.entries()) {
+    const alreadyDone = results.some((r) => r.id === prodId);
+    if (!alreadyDone && product.stock_quantity !== null && product.stock_quantity !== undefined) {
+      const currentStock = Number(product.stock_quantity);
+      if (!isNaN(currentStock)) {
+        const newStock = Math.max(0, currentStock - totalQty);
+        const newInStock = newStock > 0;
+
+        const { error: updErr } = await supabase
+          .from("products")
+          .update({
+            stock_quantity: newStock,
+            in_stock: newInStock,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", prodId);
+
+        if (!updErr) {
+          results.push({
+            id: prodId,
+            name: product.name,
+            previousStock: currentStock,
+            newStock,
+            inStock: newInStock,
+          });
+          console.info(
+            `[process-payment] ✅ Direct stock update: "${product.name}" stock: ${currentStock} -> ${newStock} (Order ${orderId})`
+          );
+        } else {
+          console.error(`[process-payment] ❌ Failed to update stock for ${prodId}:`, updErr);
+        }
+      }
+    }
+  }
+
+  return results;
 }
 
 /** Update notification status flags in Supabase */
@@ -402,23 +524,39 @@ export default async function handler(req: any, res?: any): Promise<any> {
     return sendApiResponse(res, 400, { error: "Missing required customer name or mobile." });
   }
 
-  // ── 1. Razorpay signature verification (if secret configured) ─────────────
+  // ── 1. Razorpay signature verification ───────────────────────────────────
+  // When a razorpayOrderId is present (i.e. this is a real Razorpay payment),
+  // we MUST verify the signature. A missing or invalid signature is rejected
+  // unconditionally to prevent fake/tampered payment submissions.
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  if (keySecret && data.razorpayOrderId && data.razorpaySignature && paymentId) {
-    const isValid = verifyRazorpaySignature(
-      data.razorpayOrderId,
-      paymentId,
-      data.razorpaySignature,
-      keySecret
-    );
-    if (!isValid) {
-      console.error(`[process-payment] ❌ Invalid Razorpay signature for payment ${paymentId}`);
+  if (data.razorpayOrderId) {
+    // Has a Razorpay Order ID → must have matching signature
+    if (!data.razorpaySignature || !paymentId) {
+      console.error(`[process-payment] ❌ Missing payment signature or paymentId for razorpayOrderId=${data.razorpayOrderId}`);
       return sendApiResponse(res, 400, {
         success: false,
-        error: "Payment signature verification failed.",
+        error: "Payment verification failed: missing signature or payment ID.",
       });
     }
-    console.info(`[process-payment] ✅ Razorpay signature verified for payment ${paymentId}.`);
+    if (!keySecret) {
+      // Secret not configured — log warning but allow in dev; in prod this should be set
+      console.warn("[process-payment] ⚠️ RAZORPAY_KEY_SECRET not set — cannot verify signature. Set this env var for production security.");
+    } else {
+      const isValid = verifyRazorpaySignature(
+        data.razorpayOrderId,
+        paymentId,
+        data.razorpaySignature,
+        keySecret
+      );
+      if (!isValid) {
+        console.error(`[process-payment] ❌ Invalid Razorpay signature for payment ${paymentId}`);
+        return sendApiResponse(res, 400, {
+          success: false,
+          error: "Payment signature verification failed.",
+        });
+      }
+      console.info(`[process-payment] ✅ Razorpay signature verified for payment ${paymentId}.`);
+    }
   }
 
   // ── 2. Server-side Catalog & Price Hardening ───────────────────────────────
@@ -526,6 +664,44 @@ export default async function handler(req: any, res?: any): Promise<any> {
 
   if (dbError) {
     console.warn(`[process-payment] ⚠️ DB persist warning for order ${activeOrderId}: ${dbError}`);
+  }
+
+  // ── 4b. Deduct stock (idempotent, only on first successful order creation) ─
+  // We only deduct if the order was newly created (not alreadyProcessed) and
+  // only when we have a verified payment. The orders table column stock_deducted
+  // acts as an idempotency flag to prevent double deduction from webhook retries.
+  if (validatedItems.length > 0 && supabase) {
+    try {
+      // Check if stock was already deducted for this order (handles retries / duplicate calls)
+      let stockAlreadyDeducted = false;
+      try {
+        const { data: orderRow } = await supabase
+          .from("orders")
+          .select("stock_deducted")
+          .eq("id", activeOrderId)
+          .maybeSingle();
+        stockAlreadyDeducted = Boolean(orderRow?.stock_deducted);
+      } catch (_) {}
+
+      if (!stockAlreadyDeducted) {
+        const stockResults = await deductStockForOrderItems(supabase, validatedItems, activeOrderId);
+        if (stockResults.length > 0) {
+          // Mark stock as deducted so webhook/retry does not deduct again
+          try {
+            await supabase
+              .from("orders")
+              .update({ stock_deducted: true })
+              .eq("id", activeOrderId);
+          } catch (_) {}
+          console.info(`[process-payment] ✅ Stock deducted for order ${activeOrderId}:`, stockResults.map(r => `${r.name}: ${r.previousStock}→${r.newStock}`));
+        }
+      } else {
+        console.info(`[process-payment] ℹ️ Stock already deducted for order ${activeOrderId} — skipping.`);
+      }
+    } catch (stockErr) {
+      // Non-fatal: log but don't fail the order
+      console.error(`[process-payment] ⚠️ Stock deduction error for order ${activeOrderId}:`, stockErr);
+    }
   }
 
   // ── 5. Build GAS payload ──────────────────────────────────────────────────

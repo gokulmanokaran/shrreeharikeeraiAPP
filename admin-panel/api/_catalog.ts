@@ -216,70 +216,107 @@ export async function saveCloudCategories(categories: Category[]): Promise<Stora
 }
 
 export async function deductCatalogStock(
-  items: Array<{ id: string; quantity: number }>
+  items: Array<{ id: string; productId?: string; variantId?: string; name?: string; quantity: number }>
 ): Promise<{ success: boolean; updated: any[] }> {
   const supabase = getSupabaseServerClient();
   const updatedItems: any[] = [];
 
   if (supabase) {
     try {
-      // 1. Try atomic RPC function first
-      const { data: rpcData, error: rpcError } = await supabase.rpc("deduct_product_stock", {
-        p_items: items,
-      });
+      const { data: allProducts } = await supabase
+        .from("products")
+        .select("id, name, stock_quantity, in_stock, variants");
 
-      if (!rpcError && rpcData && rpcData.success) {
-        await getCloudProducts();
-        return rpcData;
-      }
-      if (rpcError) {
-        console.warn("[CatalogEngine] Supabase RPC deduct_product_stock fallback:", rpcError.message);
-      }
-    } catch (err) {
-      console.warn("[CatalogEngine] Supabase RPC call exception:", err);
-    }
+      if (allProducts && allProducts.length > 0) {
+        const resolvedMap = new Map<string, { product: any; totalQty: number }>();
 
-    // 2. Direct Supabase row-level update fallback
-    try {
-      for (const item of items) {
-        const { data: prodData } = await supabase
-          .from("products")
-          .select("id, stock_quantity, in_stock")
-          .eq("id", item.id)
-          .single();
-
-        if (prodData && prodData.stock_quantity !== null && prodData.stock_quantity !== undefined) {
-          const currentStock = Number(prodData.stock_quantity);
-          const newStock = Math.max(0, currentStock - (item.quantity || 1));
-          const newInStock = newStock > 0;
-
-          await supabase
-            .from("products")
-            .update({
-              stock_quantity: newStock,
-              in_stock: newInStock,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", item.id);
-
-          updatedItems.push({
-            id: item.id,
-            previousStock: currentStock,
-            newStock,
-            inStock: newInStock,
+        for (const item of items) {
+          const qty = Math.max(1, Number(item.quantity) || 1);
+          const matched = allProducts.find((p: any) => {
+            if (item.productId && p.id === item.productId) return true;
+            if (item.id && p.id === item.id) return true;
+            if (item.id && Array.isArray(p.variants) && p.variants.some((v: any) => v && v.id === item.id)) return true;
+            if (item.variantId && Array.isArray(p.variants) && p.variants.some((v: any) => v && v.id === item.variantId)) return true;
+            if (item.id && item.id.includes("_") && item.id.startsWith(p.id + "_")) return true;
+            if (item.name && p.name && p.name.trim().toLowerCase() === item.name.trim().toLowerCase()) return true;
+            return false;
           });
+
+          if (matched) {
+            const existing = resolvedMap.get(matched.id);
+            if (existing) {
+              existing.totalQty += qty;
+            } else {
+              resolvedMap.set(matched.id, { product: matched, totalQty: qty });
+            }
+          }
         }
+
+        const rpcItems: Array<{ id: string; quantity: number }> = [];
+        for (const [prodId, { product, totalQty }] of resolvedMap.entries()) {
+          if (product.stock_quantity !== null && product.stock_quantity !== undefined) {
+            rpcItems.push({ id: prodId, quantity: totalQty });
+          }
+        }
+
+        // 1. Try atomic RPC function first
+        if (rpcItems.length > 0) {
+          try {
+            const { data: rpcData, error: rpcError } = await supabase.rpc("deduct_product_stock", {
+              p_items: rpcItems,
+            });
+
+            if (!rpcError && rpcData && rpcData.success && Array.isArray(rpcData.updated) && rpcData.updated.length > 0) {
+              for (const up of rpcData.updated) {
+                updatedItems.push(up);
+              }
+            }
+          } catch (err) {
+            console.warn("[CatalogEngine] Supabase RPC call exception:", err);
+          }
+        }
+
+        // 2. Direct Supabase row-level update fallback for any remaining items
+        for (const [prodId, { product, totalQty }] of resolvedMap.entries()) {
+          const alreadyUpdated = updatedItems.some((u) => u.id === prodId);
+          if (!alreadyUpdated && product.stock_quantity !== null && product.stock_quantity !== undefined) {
+            const currentStock = Number(product.stock_quantity);
+            if (!isNaN(currentStock)) {
+              const newStock = Math.max(0, currentStock - totalQty);
+              const newInStock = newStock > 0;
+
+              const { error: updErr } = await supabase
+                .from("products")
+                .update({
+                  stock_quantity: newStock,
+                  in_stock: newInStock,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", prodId);
+
+              if (!updErr) {
+                updatedItems.push({
+                  id: prodId,
+                  previousStock: currentStock,
+                  newStock,
+                  inStock: newInStock,
+                });
+              }
+            }
+          }
+        }
+
+        await getCloudProducts();
+        return { success: true, updated: updatedItems };
       }
-      await getCloudProducts();
-      return { success: true, updated: updatedItems };
     } catch (err) {
-      console.warn("[CatalogEngine] Supabase direct deduction fallback exception:", err);
+      console.warn("[CatalogEngine] Supabase deduction exception:", err);
     }
   }
 
   // 3. In-memory fallback
   for (const item of items) {
-    const idx = _cachedProducts.findIndex((p) => p.id === item.id);
+    const idx = _cachedProducts.findIndex((p) => p.id === item.id || (item.productId && p.id === item.productId));
     if (idx >= 0) {
       const p = _cachedProducts[idx];
       if (p.stockQuantity !== undefined) {
@@ -293,7 +330,7 @@ export async function deductCatalogStock(
           updatedAt: new Date().toISOString(),
         };
         updatedItems.push({
-          id: item.id,
+          id: p.id,
           previousStock: prev,
           newStock,
           inStock: newInStock,

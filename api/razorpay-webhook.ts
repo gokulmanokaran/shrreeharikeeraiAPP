@@ -32,6 +32,7 @@ import {
   getOrGenerateSequentialOrderId,
   sanitizeString,
   safeTimingEqual,
+  deductCatalogStock,
 } from "./_catalog.js";
 import { getSupabaseServerClient } from "./_supabase.js";
 
@@ -327,12 +328,34 @@ export default async function handler(req: any, res?: any): Promise<any> {
           })
           .eq("id", existingOrder.id);
 
-        // Deduct stock if not already done
-        const validItems = items
-          .filter((i: any) => i && i.id)
-          .map((i: any) => ({ id: String(i.id), quantity: Math.max(1, Number(i.quantity) || 1) }));
-        if (validItems.length > 0) {
-          await supabase.rpc("deduct_product_stock", { p_items: validItems });
+        // Deduct stock only if not already deducted (idempotency flag prevents double deduction)
+        if (items.length > 0) {
+          let stockAlreadyDeducted = Boolean(existingOrder.stock_deducted);
+          if (!stockAlreadyDeducted) {
+            // Re-fetch to get the latest stock_deducted value (race condition safety)
+            try {
+              const { data: freshRow } = await supabase
+                .from("orders")
+                .select("stock_deducted")
+                .eq("id", existingOrder.id)
+                .maybeSingle();
+              stockAlreadyDeducted = Boolean(freshRow?.stock_deducted);
+            } catch (_) {}
+          }
+
+          if (!stockAlreadyDeducted) {
+            await deductCatalogStock(items);
+            // Mark stock as deducted
+            try {
+              await supabase
+                .from("orders")
+                .update({ stock_deducted: true })
+                .eq("id", existingOrder.id);
+            } catch (_) {}
+            console.info(`[razorpay-webhook] ✅ Stock deducted for existing order ${existingOrder.id}`);
+          } else {
+            console.info(`[razorpay-webhook] ℹ️ Stock already deducted for order ${existingOrder.id} — skipping.`);
+          }
         }
       } catch (updateErr) {
         console.warn("[razorpay-webhook] Existing order update warning:", updateErr);

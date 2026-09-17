@@ -130,6 +130,10 @@ CREATE TABLE IF NOT EXISTS public.orders (
     sheets_synced  BOOLEAN NOT NULL DEFAULT false,
     email_sent     BOOLEAN NOT NULL DEFAULT false,
 
+    -- Idempotency flag: stock has been deducted for this order
+    -- Prevents double-deduction if both process-payment and razorpay-webhook fire
+    stock_deducted BOOLEAN NOT NULL DEFAULT false,
+
     -- Retry tracking
     retry_count     INTEGER NOT NULL DEFAULT 0,
     last_error      TEXT DEFAULT NULL,
@@ -301,7 +305,7 @@ FOR EACH ROW EXECUTE FUNCTION public.handle_new_customer();
 
 -- ── 7. Atomic Stock Deduction Stored Procedure (RPC) ──────────────────────────
 CREATE OR REPLACE FUNCTION public.deduct_product_stock(
-    p_items JSONB -- e.g. [{"id": "prod_1", "quantity": 2}, ...]
+    p_items JSONB -- e.g. [{"id": "prod_1", "productId": "prod_1", "quantity": 2}, ...]
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -309,19 +313,27 @@ SECURITY DEFINER
 AS $$
 DECLARE
     v_item RECORD;
+    v_target_id TEXT;
     v_current_stock INT;
     v_new_stock INT;
     v_results JSONB := '[]'::jsonb;
 BEGIN
-    FOR v_item IN SELECT * FROM jsonb_to_recordset(p_items) AS x(id TEXT, quantity INT)
+    FOR v_item IN SELECT * FROM jsonb_to_recordset(p_items) AS x(id TEXT, productId TEXT, quantity INT)
     LOOP
+        v_target_id := NULL;
+        v_current_stock := NULL;
+        
         -- Row-level locking prevents concurrency race conditions
-        SELECT stock_quantity INTO v_current_stock 
+        SELECT id, stock_quantity INTO v_target_id, v_current_stock 
         FROM public.products 
         WHERE id = v_item.id 
+           OR (v_item.productId IS NOT NULL AND id = v_item.productId)
+           OR (variants::text LIKE '%' || v_item.id || '%')
+           OR (v_item.id LIKE id || '_%')
+        LIMIT 1
         FOR UPDATE;
         
-        IF FOUND AND v_current_stock IS NOT NULL THEN
+        IF v_target_id IS NOT NULL AND v_current_stock IS NOT NULL THEN
             v_new_stock := GREATEST(0, v_current_stock - COALESCE(v_item.quantity, 1));
             
             UPDATE public.products
@@ -329,10 +341,10 @@ BEGIN
                 stock_quantity = v_new_stock,
                 in_stock = (v_new_stock > 0),
                 updated_at = timezone('utc'::text, now())
-            WHERE id = v_item.id;
+            WHERE id = v_target_id;
             
             v_results := v_results || jsonb_build_object(
-                'id', v_item.id,
+                'id', v_target_id,
                 'previousStock', v_current_stock,
                 'newStock', v_new_stock,
                 'inStock', (v_new_stock > 0)

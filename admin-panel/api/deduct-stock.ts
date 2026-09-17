@@ -39,9 +39,12 @@ export default async function handler(req: any, res?: any): Promise<any> {
 
     // Clean & validate item inputs
     const validItems = items
-      .filter((item) => item && typeof item.id === "string" && item.id.trim())
-      .map((item) => ({
-        id: item.id.trim(),
+      .filter((item: any) => item && (item.id || item.productId || item.name))
+      .map((item: any) => ({
+        id: String(item.id || "").trim(),
+        productId: item.productId ? String(item.productId).trim() : undefined,
+        variantId: item.variantId ? String(item.variantId).trim() : undefined,
+        name: item.name ? String(item.name).trim() : undefined,
         quantity: Math.max(1, Number(item.quantity) || 1),
       }));
 

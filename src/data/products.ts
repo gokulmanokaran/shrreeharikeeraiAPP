@@ -43,6 +43,8 @@ export interface Product {
   sortOrder?: number;
   variantType?: "weight" | "sugar";
   variants?: ProductVariant[];
+  productId?: string;
+  variantId?: string;
   updatedAt?: string;
 }
 
@@ -63,6 +65,8 @@ export function getVariantProduct(product: Product, variant: ProductVariant): Pr
   return {
     ...product,
     id: variant.id,
+    productId: product.productId || product.id,
+    variantId: variant.id,
     price: variant.price,
     mrp: product.mrp,
     unit: isSugar ? `${product.unit} (${variant.unit})` : variant.unit,

@@ -230,6 +230,8 @@ export function findProductById(products: Product[], id: string): Product | unde
       return {
         ...parent,
         id: variant.id,
+        productId: parent.id,
+        variantId: variant.id,
         price: variant.price,
         mrp: parent.mrp,
         unit: isSugar ? `${parent.unit} (${variant.unit})` : variant.unit,
@@ -261,16 +263,17 @@ export function filterProductsByQuery(products: Product[], query: string): Produ
 }
 
 /**
- * Deduct stock upon successful payment / order placement.
- * Updates local cache instantly and syncs with Central API & Supabase database.
+ * Optimistically deduct stock in local cache upon successful payment / order placement.
+ * The authoritative server-side stock deduction is handled atomically by /api/process-payment.
  */
 export async function deductLiveProductStock(
-  orderItems: Array<{ id?: string; quantity?: number }>
+  orderItems: Array<{ id?: string; productId?: string; variantId?: string; quantity?: number }>
 ): Promise<void> {
   const validItems = orderItems
-    .filter((item) => item && item.id)
+    .filter((item) => item && (item.id || item.productId))
     .map((item) => ({
-      id: item.id as string,
+      id: (item.id || item.productId) as string,
+      productId: item.productId,
       quantity: Math.max(1, Number(item.quantity) || 1),
     }));
 
@@ -280,8 +283,9 @@ export async function deductLiveProductStock(
   try {
     const stored = getStoredProducts();
     const updated = stored.map((prod) => {
-      // Direct product match or variant match
+      // Match by direct product ID, explicit productId, or variant match
       const deduction =
+        validItems.find((i) => i.productId && i.productId === prod.id) ||
         validItems.find((i) => i.id === prod.id) ||
         validItems.find((i) => prod.variants?.some((v) => v.id === i.id));
 
@@ -300,34 +304,5 @@ export async function deductLiveProductStock(
     cacheProducts(updated);
   } catch (err) {
     console.warn("[ProductService] Local stock cache decrement error:", err);
-  }
-
-  // 2. Call Central Serverless API
-  let apiDeducted = false;
-  try {
-    const res = await fetch("/api/deduct-stock", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items: validItems }),
-    });
-    if (res.ok) {
-      apiDeducted = true;
-      console.info("[ProductService] Central API stock deduction confirmed.");
-    }
-  } catch (err) {
-    console.warn("[ProductService] Stock deduction API call warning:", err);
-  }
-
-  // 3. Fallback: Only call Supabase RPC directly if the Central API was unreachable
-  if (!apiDeducted) {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        await supabase.rpc("deduct_product_stock", { p_items: validItems });
-        console.info("[ProductService] Direct Supabase RPC stock deduction fallback succeeded.");
-      } catch (err) {
-        console.warn("[ProductService] Supabase RPC direct call warning:", err);
-      }
-    }
   }
 }

@@ -234,6 +234,8 @@ export default function CheckoutPage() {
     const orderId = `SHK-TEMP-${Date.now().toString().slice(-6)}`;
     const orderItems = items.map((i) => ({
       id: i.product.id,
+      productId: i.product.productId || (i.product as any).parentId || i.product.id,
+      variantId: i.product.variantId,
       name: i.product.name,
       nameTamil: i.product.nameTamil,
       quantity: i.quantity,

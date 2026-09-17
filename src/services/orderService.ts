@@ -22,6 +22,8 @@ import { getSupabaseClient } from "../lib/supabase";
 
 export interface OrderItemPayload {
   id?: string;
+  productId?: string;
+  variantId?: string;
   name: string;
   nameTamil?: string;
   quantity: number;
