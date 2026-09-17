@@ -1,7 +1,7 @@
 -- ==============================================================================
 -- Shree Hari Keerai — Sequential Order ID System Migration
 -- ==============================================================================
--- Formats order IDs sequentially: ORD-000001, ORD-000002, ORD-000003, etc.
+-- Formats order IDs sequentially: SHK-00001, SHK-00002, ..., SHK-00025, SHK-00026
 -- Atomic, concurrent-safe, server-side/database-side generation.
 -- ==============================================================================
 
@@ -20,7 +20,7 @@ DECLARE
   v_order_record RECORD;
 BEGIN
   FOR v_order_record IN 
-    SELECT id FROM public.orders WHERE id ~ '^ORD-[0-9]+$'
+    SELECT id FROM public.orders WHERE id ~ '^SHK-[0-9]+$'
   LOOP
     BEGIN
       v_max_seq := GREATEST(v_max_seq, SUBSTRING(v_order_record.id FROM 5)::BIGINT);
@@ -50,8 +50,8 @@ BEGIN
   LOOP
     v_tries := v_tries + 1;
     v_seq := nextval('public.order_number_seq');
-    -- Format: ORD-000001, ORD-000002, etc. (6-digit zero padding)
-    v_order_id := 'ORD-' || LPAD(v_seq::TEXT, 6, '0');
+    -- Format: SHK-00001, SHK-00025, SHK-00026 (5-digit zero padding)
+    v_order_id := 'SHK-' || LPAD(v_seq::TEXT, 5, '0');
     
     -- Safety check: ensure no order already exists with this ID
     SELECT EXISTS(SELECT 1 FROM public.orders WHERE id = v_order_id) INTO v_exists;

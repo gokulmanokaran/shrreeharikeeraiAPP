@@ -467,3 +467,89 @@ export function validateAdminAuth(getHeader: (name: string) => string | undefine
   return false;
 }
 
+// ─── Sequential Order ID Generator ────────────────────────────────────────────
+export async function getOrGenerateSequentialOrderId(
+  supabase: any,
+  paymentId?: string,
+  clientOrderId?: string
+): Promise<string> {
+  // 1. Idempotency check by payment ID
+  if (supabase && paymentId && paymentId !== "N/A") {
+    try {
+      const { data: existingByPayment } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("razorpay_payment_id", paymentId)
+        .maybeSingle();
+      if (existingByPayment?.id && /^SHK-\d+$/i.test(existingByPayment.id)) {
+        return existingByPayment.id;
+      }
+    } catch {
+      // Continue
+    }
+  }
+
+  // 2. Check if clientOrderId already exists in DB with valid sequential format
+  if (supabase && clientOrderId && /^SHK-\d+$/i.test(clientOrderId)) {
+    try {
+      const { data: existingById } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("id", clientOrderId)
+        .maybeSingle();
+      if (existingById?.id) {
+        return existingById.id;
+      }
+    } catch {
+      // Continue
+    }
+  }
+
+  // 3. Database-backed strict sequence calculation based on highest existing order ID
+  if (supabase) {
+    try {
+      const { data: orderRows } = await supabase
+        .from("orders")
+        .select("id")
+        .like("id", "SHK-%")
+        .limit(10000);
+
+      let maxSeq = 0;
+      if (Array.isArray(orderRows)) {
+        for (const row of orderRows) {
+          const idStr = String(row?.id || "").trim();
+          const match = idStr.match(/^SHK-(\d+)$/i);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (!isNaN(num) && num > maxSeq) {
+              maxSeq = num;
+            }
+          }
+        }
+      }
+
+      // Strict increment: if highest in DB is 25, next is 26
+      let candidateNum = maxSeq + 1;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const candidateId = `SHK-${String(candidateNum).padStart(5, "0")}`;
+        const { data: conflict } = await supabase
+          .from("orders")
+          .select("id")
+          .eq("id", candidateId)
+          .maybeSingle();
+
+        if (!conflict) {
+          return candidateId;
+        }
+        candidateNum++;
+      }
+    } catch (err) {
+      console.warn("[getOrGenerateSequentialOrderId] Query fallback warning:", err);
+    }
+  }
+
+  // 4. Default baseline fallback
+  return "SHK-00001";
+}
+
+

@@ -283,6 +283,11 @@ export async function persistOrderDirectToSupabase(
   payload: OrderNotificationPayload
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    if (!payload.orderId || !/^SHK-\d+$/i.test(payload.orderId)) {
+      // Temporary client IDs are never persisted directly — /api/process-payment generates the authoritative sequential ID
+      return { success: true };
+    }
+
     const supabase = getSupabaseClient();
     if (!supabase) {
       console.warn("[OrderService] Supabase client not initialized for direct save.");
@@ -425,7 +430,7 @@ export async function submitOrderNotification(
       const rawLatest = localStorage.getItem("shreehari_latest_order");
       if (rawLatest) {
         const parsed = JSON.parse(rawLatest);
-        if (parsed.orderId === orderId || !parsed.orderId?.startsWith("ORD-")) {
+        if (parsed.orderId === orderId || !parsed.orderId?.startsWith("SHK-")) {
           parsed.orderId = finalId;
           localStorage.setItem("shreehari_latest_order", JSON.stringify(parsed));
         }

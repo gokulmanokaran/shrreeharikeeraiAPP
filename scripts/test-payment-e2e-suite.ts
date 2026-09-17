@@ -154,7 +154,7 @@ async function runE2ETestSuite() {
   const orderExists = !!savedOrder && !fetchErr;
   const orderPaid = savedOrder?.payment_status?.includes("Paid") && savedOrder?.razorpay_payment_id === paymentAttempt2SuccessId;
   const userLinked = savedOrder?.user_id === userA.id;
-  const isSequentialFormat = assignedOrderId.startsWith("ORD-");
+  const isSequentialFormat = /^SHK-\d{5,}$/.test(assignedOrderId);
 
   console.log(`   - Order exists in DB: ${orderExists ? "YES ✅" : "NO ❌"} (ID: ${assignedOrderId})`);
   console.log(`   - Order sequential format: ${isSequentialFormat ? "YES ✅" : "NO ❌"}`);
@@ -271,7 +271,7 @@ async function runE2ETestSuite() {
   const whAssignedOrderId = whOnlyResult.data?.orderId;
 
   const { data: whSavedOrder } = await adminClient.from("orders").select("*").eq("id", whAssignedOrderId).single();
-  const whOrderCreated = !!whSavedOrder && whSavedOrder.user_id === userA.id && whSavedOrder.payment_status?.includes("Paid") && whAssignedOrderId?.startsWith("ORD-");
+  const whOrderCreated = !!whSavedOrder && whSavedOrder.user_id === userA.id && whSavedOrder.payment_status?.includes("Paid") && whAssignedOrderId?.startsWith("SHK-");
   console.log(`   - Webhook-only order created and linked to User A: ${whOrderCreated ? "YES ✅" : "NO ❌"} (ID: ${whAssignedOrderId})`);
 
   results["Webhook-Only Fallback Processing"] = whOrderCreated ? "PASS" : "FAIL";

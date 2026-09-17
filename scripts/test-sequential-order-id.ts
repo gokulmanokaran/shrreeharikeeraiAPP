@@ -49,7 +49,7 @@ function mockReqRes(method: string, body: any, headers: Record<string, string> =
 
 async function runSequentialIdTests() {
   console.log("================================================================================");
-  console.log("SHREE HARI KEERAI — SEQUENTIAL ORDER ID & SECURITY VERIFICATION SUITE");
+  console.log("SHREE HARI KEERAI — STRICT SEQUENTIAL ORDER ID VERIFICATION SUITE");
   console.log("================================================================================\n");
 
   const createdTestOrderIds: string[] = [];
@@ -59,8 +59,8 @@ async function runSequentialIdTests() {
     console.log("1. Testing getOrGenerateSequentialOrderId directly...");
     const seq1 = await getOrGenerateSequentialOrderId(adminClient);
     console.log("   Candidate Sequence ID 1:", seq1);
-    if (!/^ORD-\d{6}$/.test(seq1)) {
-      throw new Error(`Invalid sequential format: ${seq1}. Expected ORD-000001 format.`);
+    if (!/^SHK-\d{5,}$/.test(seq1)) {
+      throw new Error(`Invalid sequential format: ${seq1}. Expected SHK-00001 format.`);
     }
 
     // 2. Testing Sequential Order Placement via /api/process-payment
@@ -86,7 +86,7 @@ async function runSequentialIdTests() {
     const result1 = getRes1();
     console.log("   Order 1 API Response Status:", result1.status, "Body:", result1.data);
 
-    if (result1.status !== 200 || !result1.data.success || !result1.data.orderId.startsWith("ORD-")) {
+    if (result1.status !== 200 || !result1.data.success || !result1.data.orderId.startsWith("SHK-")) {
       throw new Error(`Order 1 failed to receive valid sequential ID: ${JSON.stringify(result1.data)}`);
     }
     const orderId1 = result1.data.orderId;
@@ -115,20 +115,54 @@ async function runSequentialIdTests() {
     const result2 = getRes2();
     console.log("   Order 2 API Response Status:", result2.status, "Body:", result2.data);
 
-    if (result2.status !== 200 || !result2.data.success || !result2.data.orderId.startsWith("ORD-")) {
+    if (result2.status !== 200 || !result2.data.success || !result2.data.orderId.startsWith("SHK-")) {
       throw new Error(`Order 2 failed to receive valid sequential ID: ${JSON.stringify(result2.data)}`);
     }
     const orderId2 = result2.data.orderId;
     createdTestOrderIds.push(orderId2);
     console.log(`   ✅ Order 2 successfully created with Sequential ID: ${orderId2}`);
 
-    // Verify order 2 sequence number is exactly order 1 sequence number + 1
-    const num1 = parseInt(orderId1.replace("ORD-", ""), 10);
-    const num2 = parseInt(orderId2.replace("ORD-", ""), 10);
+    // Place Third Order
+    const testPaymentId3 = `pay_seq_test_${Date.now()}_3`;
+    const { req: req3, res: res3, getResult: getRes3 } = mockReqRes("POST", {
+      fullName: "Sequence Test Customer 3",
+      mobile: "9876543212",
+      email: "test_seq3@example.com",
+      address: "789 Test Road, Coimbatore",
+      items: [
+        { id: "senkeerai", name: "Senkeerai", quantity: 3, price: 30 },
+      ],
+      subtotal: 90,
+      deliveryCharge: 30,
+      discount: 0,
+      total: 120,
+      paymentId: testPaymentId3,
+      paymentStatus: `Paid (Razorpay) · ${testPaymentId3}`,
+    });
+
+    await processPaymentHandler(req3, res3);
+    const result3 = getRes3();
+    console.log("   Order 3 API Response Status:", result3.status, "Body:", result3.data);
+
+    if (result3.status !== 200 || !result3.data.success || !result3.data.orderId.startsWith("SHK-")) {
+      throw new Error(`Order 3 failed to receive valid sequential ID: ${JSON.stringify(result3.data)}`);
+    }
+    const orderId3 = result3.data.orderId;
+    createdTestOrderIds.push(orderId3);
+    console.log(`   ✅ Order 3 successfully created with Sequential ID: ${orderId3}`);
+
+    // Verify exact sequence increments: order 1 -> order 2 -> order 3
+    const num1 = parseInt(orderId1.replace("SHK-", ""), 10);
+    const num2 = parseInt(orderId2.replace("SHK-", ""), 10);
+    const num3 = parseInt(orderId3.replace("SHK-", ""), 10);
+
     if (num2 !== num1 + 1) {
       throw new Error(`Sequential order numbering mismatch: Order 1 was ${orderId1} (${num1}), Order 2 was ${orderId2} (${num2}). Expected ${num1 + 1}.`);
     }
-    console.log(`   ✅ Exact sequence verified: ${orderId1} -> ${orderId2} (+1 increment)`);
+    if (num3 !== num2 + 1) {
+      throw new Error(`Sequential order numbering mismatch: Order 2 was ${orderId2} (${num2}), Order 3 was ${orderId3} (${num3}). Expected ${num2 + 1}.`);
+    }
+    console.log(`   ✅ Exact sequence verified: ${orderId1} -> ${orderId2} -> ${orderId3} (Strict +1 increments)`);
 
     // 3. Testing Idempotency & No Sequence Burn on Retries
     console.log("\n3. Testing Idempotency & Duplicate Resubmission...");
@@ -150,13 +184,13 @@ async function runSequentialIdTests() {
 
     // 4. Testing Webhook Fallback Sequential Generation
     console.log("\n4. Testing Razorpay Webhook Fallback Sequential ID...");
-    const testPaymentId3 = `pay_seq_test_${Date.now()}_3`;
+    const testPaymentId4 = `pay_seq_test_${Date.now()}_4`;
     const { req: whReq, res: whRes, getResult: getWhRes } = mockReqRes("POST", {
       event: "payment.captured",
       payload: {
         payment: {
           entity: {
-            id: testPaymentId3,
+            id: testPaymentId4,
             amount: 15000,
             currency: "INR",
             status: "captured",
@@ -173,16 +207,16 @@ async function runSequentialIdTests() {
     await razorpayWebhookHandler(whReq, whRes);
     const whResult = getWhRes();
     console.log("   Webhook Fallback Response:", whResult.status, whResult.data);
-    if (!whResult.data.orderId?.startsWith("ORD-")) {
+    if (!whResult.data.orderId?.startsWith("SHK-")) {
       throw new Error(`Webhook failed to assign sequential ID: ${JSON.stringify(whResult.data)}`);
     }
-    const orderId3 = whResult.data.orderId;
-    createdTestOrderIds.push(orderId3);
-    const num3 = parseInt(orderId3.replace("ORD-", ""), 10);
-    if (num3 !== num2 + 1) {
-      throw new Error(`Webhook sequential numbering mismatch: ${orderId3} (${num3}) expected ${num2 + 1}`);
+    const orderId4 = whResult.data.orderId;
+    createdTestOrderIds.push(orderId4);
+    const num4 = parseInt(orderId4.replace("SHK-", ""), 10);
+    if (num4 !== num3 + 1) {
+      throw new Error(`Webhook sequential numbering mismatch: ${orderId4} (${num4}) expected ${num3 + 1}`);
     }
-    console.log(`   ✅ Webhook fallback received sequential ID: ${orderId3} (+1 increment)`);
+    console.log(`   ✅ Webhook fallback received sequential ID: ${orderId4} (+1 increment)`);
 
     // 5. Testing Admin Auth Hardening & Rate Limiting
     console.log("\n5. Testing Admin Authentication Security & Rate Limiting...");
@@ -203,7 +237,7 @@ async function runSequentialIdTests() {
     console.log("   ✅ Invalid Admin Authentication Rejected (401): PASS");
 
     console.log("\n================================================================================");
-    console.log("ALL SEQUENTIAL ORDER ID & SECURITY HARDENING TESTS PASSED 🎉");
+    console.log("ALL STRICT SEQUENTIAL ORDER ID TESTS PASSED 🎉");
     console.log("================================================================================");
   } finally {
     // Cleanup created test records from orders table

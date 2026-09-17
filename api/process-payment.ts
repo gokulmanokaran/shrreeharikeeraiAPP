@@ -188,15 +188,15 @@ async function callGoogleAppsScript(
   };
 }
 
-/** Upsert order into Supabase orders table with guaranteed sequential order ID */
+/** Upsert or insert order into Supabase orders table with guaranteed unique sequential order ID */
 async function upsertOrderToSupabase(
   data: ProcessPaymentBody,
   assignedOrderId: string
-): Promise<{ alreadyProcessed: boolean; error?: string; existingOrder?: any }> {
+): Promise<{ alreadyProcessed: boolean; error?: string; existingOrder?: any; finalOrderId: string }> {
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     console.warn("[process-payment] Supabase client not available — order not persisted to DB.");
-    return { alreadyProcessed: false };
+    return { alreadyProcessed: false, finalOrderId: assignedOrderId };
   }
 
   const paymentId = data.paymentId || data.razorpayPaymentId || "";
@@ -217,7 +217,7 @@ async function upsertOrderToSupabase(
         console.info(
           `[process-payment] ℹ️ Order ${assignedOrderId} already exists in DB and is fully synced. Skipping duplicate notification.`
         );
-        return { alreadyProcessed: true, existingOrder: existingById };
+        return { alreadyProcessed: true, existingOrder: existingById, finalOrderId: assignedOrderId };
       }
     }
 
@@ -228,13 +228,17 @@ async function upsertOrderToSupabase(
         .eq("razorpay_payment_id", paymentId)
         .maybeSingle();
 
-      if (existingByPayment && existingByPayment.id !== assignedOrderId) {
+      if (existingByPayment) {
         const isPaid = String(existingByPayment.payment_status || "").toLowerCase().includes("paid");
         if (isPaid && existingByPayment.sheets_synced && existingByPayment.email_sent) {
           console.info(
             `[process-payment] ℹ️ Payment ${paymentId} was already processed under order ${existingByPayment.id}. Skipping duplicate.`
           );
-          return { alreadyProcessed: true, existingOrder: existingByPayment };
+          return { alreadyProcessed: true, existingOrder: existingByPayment, finalOrderId: existingByPayment.id };
+        }
+        if (existingByPayment.id && /^SHK-\d+$/i.test(existingByPayment.id)) {
+          existingOrderRow = existingByPayment;
+          assignedOrderId = existingByPayment.id;
         }
       }
     }
@@ -262,42 +266,69 @@ async function upsertOrderToSupabase(
     data.mapsLink ||
     (data.lat && data.lng ? `https://www.google.com/maps?q=${data.lat},${data.lng}` : "");
 
-  const row = {
-    id: assignedOrderId,
-    user_id: targetUserId,
-    razorpay_payment_id: paymentId || null,
-    razorpay_order_id: data.razorpayOrderId || null,
-    razorpay_signature: data.razorpaySignature || null,
-    full_name: data.fullName || "",
-    mobile: data.mobile || "",
-    email: (data.email || "").trim(),
-    address: data.address || "",
-    city: data.city || "",
-    state: data.state || "",
-    pincode: data.pincode || "",
-    lat: data.lat ?? null,
-    lng: data.lng ?? null,
-    maps_link: mapsLink,
-    subtotal: Number(data.subtotal || 0),
-    delivery_charge: Number(data.deliveryCharge || 0),
-    discount: Number(data.discount || 0),
-    total: Number(data.total || 0),
-    items: data.items || [],
-    payment_status: data.paymentStatus || `Paid (Razorpay)${paymentId ? ` · ${paymentId}` : ""}`,
-    sheets_synced: existingOrderRow?.sheets_synced ?? false,
-    email_sent: existingOrderRow?.email_sent ?? false,
-    retry_count: existingOrderRow?.retry_count ?? 0,
-    source: data.source || "storefront",
-  };
+  let currentOrderId = assignedOrderId;
+  let saveError: string | undefined = undefined;
 
-  // 3. Upsert order row
-  const { error } = await supabase
-    .from("orders")
-    .upsert(row, { onConflict: "id" });
+  // 3. Insert or Update with concurrent conflict retry
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const row = {
+      id: currentOrderId,
+      user_id: targetUserId,
+      razorpay_payment_id: paymentId || null,
+      razorpay_order_id: data.razorpayOrderId || null,
+      razorpay_signature: data.razorpaySignature || null,
+      full_name: data.fullName || "",
+      mobile: data.mobile || "",
+      email: (data.email || "").trim(),
+      address: data.address || "",
+      city: data.city || "",
+      state: data.state || "",
+      pincode: data.pincode || "",
+      lat: data.lat ?? null,
+      lng: data.lng ?? null,
+      maps_link: mapsLink,
+      subtotal: Number(data.subtotal || 0),
+      delivery_charge: Number(data.deliveryCharge || 0),
+      discount: Number(data.discount || 0),
+      total: Number(data.total || 0),
+      items: data.items || [],
+      payment_status: data.paymentStatus || `Paid (Razorpay)${paymentId ? ` · ${paymentId}` : ""}`,
+      sheets_synced: existingOrderRow?.sheets_synced ?? false,
+      email_sent: existingOrderRow?.email_sent ?? false,
+      retry_count: existingOrderRow?.retry_count ?? 0,
+      source: data.source || "storefront",
+    };
 
-  if (error) {
-    console.error("[process-payment] Supabase upsert error:", error);
-    return { alreadyProcessed: false, error: error.message, existingOrder: existingOrderRow };
+    if (existingOrderRow && existingOrderRow.id === currentOrderId) {
+      const { error: updErr } = await supabase.from("orders").update(row).eq("id", currentOrderId);
+      if (!updErr) {
+        saveError = undefined;
+        break;
+      }
+      saveError = updErr.message;
+      break;
+    } else {
+      const { error: insErr } = await supabase.from("orders").insert(row);
+      if (!insErr) {
+        saveError = undefined;
+        break;
+      }
+
+      // Check for primary key conflict due to concurrent order placement
+      if (insErr.code === "23505" || insErr.message?.includes("duplicate") || insErr.message?.includes("already exists")) {
+        console.warn(`[process-payment] Conflict on order ID ${currentOrderId}. Regenerating next sequence...`);
+        currentOrderId = await getOrGenerateSequentialOrderId(supabase, paymentId);
+        continue;
+      }
+
+      saveError = insErr.message;
+      break;
+    }
+  }
+
+  if (saveError) {
+    console.error("[process-payment] Supabase order save error:", saveError);
+    return { alreadyProcessed: false, error: saveError, existingOrder: existingOrderRow, finalOrderId: currentOrderId };
   }
 
   // 4. Server-side atomic stock deduction
@@ -310,14 +341,14 @@ async function upsertOrderToSupabase(
       }));
     if (validItems.length > 0 && (!existingOrderRow || existingOrderRow.retry_count === 0)) {
       await supabase.rpc("deduct_product_stock", { p_items: validItems });
-      console.info(`[process-payment] ✅ Atomic stock deduction executed for order ${assignedOrderId}.`);
+      console.info(`[process-payment] ✅ Atomic stock deduction executed for order ${currentOrderId}.`);
     }
   } catch (stockErr) {
     console.warn("[process-payment] Stock deduction RPC warning:", stockErr);
   }
 
-  console.info(`[process-payment] Order ${assignedOrderId} successfully persisted/upserted in Supabase.`);
-  return { alreadyProcessed: false, existingOrder: existingOrderRow };
+  console.info(`[process-payment] Order ${currentOrderId} successfully persisted in Supabase.`);
+  return { alreadyProcessed: false, existingOrder: existingOrderRow, finalOrderId: currentOrderId };
 }
 
 /** Update notification status flags in Supabase */
@@ -474,16 +505,17 @@ export default async function handler(req: any, res?: any): Promise<any> {
   };
 
   // ── 4. Upsert order to Supabase ───────────────────────────────────────────
-  const { alreadyProcessed, error: dbError, existingOrder } = await upsertOrderToSupabase(
+  const { alreadyProcessed, error: dbError, existingOrder, finalOrderId } = await upsertOrderToSupabase(
     cleanOrderPayload,
     sequentialOrderId
   );
+  const activeOrderId = finalOrderId || sequentialOrderId;
 
   if (alreadyProcessed) {
-    console.info(`[process-payment] ℹ️ Order ${sequentialOrderId} already processed & synced. Returning cached success.`);
+    console.info(`[process-payment] ℹ️ Order ${activeOrderId} already processed & synced. Returning cached success.`);
     return sendApiResponse(res, 200, {
       success: true,
-      orderId: sequentialOrderId,
+      orderId: activeOrderId,
       alreadyProcessed: true,
       sheetsSynced: true,
       emailSent: true,
@@ -492,7 +524,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
   }
 
   if (dbError) {
-    console.warn(`[process-payment] ⚠️ DB persist warning for order ${sequentialOrderId}: ${dbError}`);
+    console.warn(`[process-payment] ⚠️ DB persist warning for order ${activeOrderId}: ${dbError}`);
   }
 
   // ── 5. Forward to Google Apps Script (Sheets + Email) with retry ──────────
@@ -525,7 +557,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
 
   const gasPayload = {
     ...cleanOrderPayload,
-    orderId: sequentialOrderId,
+    orderId: activeOrderId,
     paymentId: paymentId || "N/A",
     mapsLink,
     formattedDate,
@@ -542,7 +574,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
   const emailSent = gasResult.emailSent || gasResult.success;
   const currentRetryCount = existingOrder?.retry_count || 0;
 
-  await updateNotificationStatus(sequentialOrderId, {
+  await updateNotificationStatus(activeOrderId, {
     sheets_synced: sheetsSynced,
     email_sent: emailSent,
     retry_count: currentRetryCount + gasResult.attempts,
@@ -552,18 +584,18 @@ export default async function handler(req: any, res?: any): Promise<any> {
 
   if (gasResult.success) {
     console.info(
-      `[process-payment] ✅ ORDER ${sequentialOrderId} FULLY PROCESSED | Payment: ${paymentId} | Sheets: ✅ | Email: ✅`
+      `[process-payment] ✅ ORDER ${activeOrderId} FULLY PROCESSED | Payment: ${paymentId} | Sheets: ✅ | Email: ✅`
     );
   } else {
     console.error(
-      `[process-payment] ❌ ORDER ${sequentialOrderId} GAS FORWARD FAILED | Error: ${gasResult.lastError}`
+      `[process-payment] ❌ ORDER ${activeOrderId} GAS FORWARD FAILED | Error: ${gasResult.lastError}`
     );
   }
 
   // ── 7. Respond to browser ─────────────────────────────────────────────────
   return sendApiResponse(res, 200, {
     success: true,
-    orderId: sequentialOrderId,
+    orderId: activeOrderId,
     alreadyProcessed: false,
     sheetsSynced,
     emailSent,

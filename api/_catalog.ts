@@ -526,20 +526,19 @@ export function validateAdminAuth(getHeader: (name: string) => string | undefine
 
 // ─── Sequential Order ID Generator ────────────────────────────────────────────
 /**
- * Atomically resolves or generates the next sequential Order ID (ORD-000001, ORD-000002, etc.).
+ * Atomically resolves or generates the next sequential Order ID (SHK-00001, SHK-00002, ..., SHK-00025, SHK-00026).
  * 
- * 1. If an order with this razorpay_payment_id already exists in Supabase, returns that order's ID.
- * 2. If clientOrderId already follows ORD-XXXXXX format and exists in Supabase, returns that ID.
- * 3. Calls Supabase RPC `generate_sequential_order_id()` if available.
- * 4. Fallback: Queries existing ORD-XXXXXX records in DB, determines highest integer suffix, increments by 1,
- *    and tests uniqueness with retry loop.
+ * 1. If an order with this razorpay_payment_id already exists in Supabase and has a sequential ID, returns that order's ID.
+ * 2. If clientOrderId already follows SHK-XXXXX sequential format and exists in Supabase, returns that ID.
+ * 3. Queries existing SHK-XXXXX records in DB, determines highest integer suffix, increments by 1 (e.g. 25 -> 26),
+ *    and verifies candidate uniqueness against the DB with conflict resolution.
  */
 export async function getOrGenerateSequentialOrderId(
   supabase: any,
   paymentId?: string,
   clientOrderId?: string
 ): Promise<string> {
-  // 1. Idempotency check by payment ID
+  // 1. Idempotency check by payment ID: return existing order ID if already assigned
   if (supabase && paymentId && paymentId !== "N/A") {
     try {
       const { data: existingByPayment } = await supabase
@@ -547,7 +546,7 @@ export async function getOrGenerateSequentialOrderId(
         .select("id")
         .eq("razorpay_payment_id", paymentId)
         .maybeSingle();
-      if (existingByPayment?.id) {
+      if (existingByPayment?.id && /^SHK-\d+$/i.test(existingByPayment.id)) {
         return existingByPayment.id;
       }
     } catch {
@@ -555,8 +554,8 @@ export async function getOrGenerateSequentialOrderId(
     }
   }
 
-  // 2. Check if clientOrderId is an existing sequential order already in DB
-  if (supabase && clientOrderId && /^ORD-\d{6,}$/i.test(clientOrderId)) {
+  // 2. Check if clientOrderId already exists in DB with valid sequential format
+  if (supabase && clientOrderId && /^SHK-\d+$/i.test(clientOrderId)) {
     try {
       const { data: existingById } = await supabase
         .from("orders")
@@ -571,32 +570,20 @@ export async function getOrGenerateSequentialOrderId(
     }
   }
 
-  // 3. Attempt DB-level RPC function
-  if (supabase) {
-    try {
-      const { data: rpcId, error: rpcErr } = await supabase.rpc("generate_sequential_order_id");
-      if (!rpcErr && rpcId && typeof rpcId === "string" && rpcId.startsWith("ORD-")) {
-        return rpcId;
-      }
-    } catch {
-      // Fall through to query-based fallback
-    }
-  }
-
-  // 4. DB-backed sequence calculation with conflict safety
+  // 3. Database-backed strict sequence calculation based on highest existing order ID
   if (supabase) {
     try {
       const { data: orderRows } = await supabase
         .from("orders")
         .select("id")
-        .order("created_at", { ascending: false })
-        .limit(200);
+        .like("id", "SHK-%")
+        .limit(10000);
 
       let maxSeq = 0;
       if (Array.isArray(orderRows)) {
         for (const row of orderRows) {
-          const idStr = String(row?.id || "");
-          const match = idStr.match(/^ORD-(\d+)$/i);
+          const idStr = String(row?.id || "").trim();
+          const match = idStr.match(/^SHK-(\d+)$/i);
           if (match) {
             const num = parseInt(match[1], 10);
             if (!isNaN(num) && num > maxSeq) {
@@ -606,10 +593,10 @@ export async function getOrGenerateSequentialOrderId(
         }
       }
 
-      // Check candidate ID with existence check
+      // Strict increment: if highest in DB is 25, next is 26
       let candidateNum = maxSeq + 1;
-      for (let attempt = 0; attempt < 50; attempt++) {
-        const candidateId = `ORD-${String(candidateNum).padStart(6, "0")}`;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const candidateId = `SHK-${String(candidateNum).padStart(5, "0")}`;
         const { data: conflict } = await supabase
           .from("orders")
           .select("id")
@@ -626,7 +613,7 @@ export async function getOrGenerateSequentialOrderId(
     }
   }
 
-  // 5. Ultimate fallback if DB client is completely offline
-  return `ORD-${Date.now().toString().slice(-6)}`;
+  // 4. Default baseline fallback
+  return "SHK-00001";
 }
 

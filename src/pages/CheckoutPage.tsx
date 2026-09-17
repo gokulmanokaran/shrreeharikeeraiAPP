@@ -231,7 +231,7 @@ export default function CheckoutPage() {
     isNavigatingRef.current = true;
     setPlacing(true);
 
-    const orderId = `ORD-TEMP-${Date.now().toString().slice(-6)}`;
+    const orderId = `SHK-TEMP-${Date.now().toString().slice(-6)}`;
     const orderItems = items.map((i) => ({
       id: i.product.id,
       name: i.product.name,
