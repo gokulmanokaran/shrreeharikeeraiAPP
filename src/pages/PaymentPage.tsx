@@ -138,12 +138,12 @@ export default function PaymentPage() {
     return null;
   }, [location.state]);
 
-  // If no order data and no cart items, redirect back to cart (unless success modal is showing)
+  // If saving or success modal is active, do not redirect to cart
   useEffect(() => {
-    if (!pendingOrder && !successfulOrder && items.length === 0 && !isNavigatingRef.current) {
+    if (!pendingOrder && !successfulOrder && !isSaving && items.length === 0 && !isNavigatingRef.current) {
       navigate("/cart", { replace: true });
     }
-  }, [pendingOrder, items.length, successfulOrder, navigate]);
+  }, [pendingOrder, items.length, successfulOrder, isSaving, navigate]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -157,7 +157,46 @@ export default function PaymentPage() {
     navigate("/", { replace: true });
   };
 
-  if (!pendingOrder && !successfulOrder) {
+  // ─── 1. Order Successfully Finalized → Show Success Popup Only ─────────────
+  if (successfulOrder) {
+    return (
+      <div className="min-h-dvh bg-gradient-to-b from-[#F5FCF8] via-[#FAF8F1] to-white flex items-center justify-center p-4">
+        <OrderSuccessModal
+          isOpen={true}
+          orderId={successfulOrder.orderId || ""}
+          totalAmount={successfulOrder.total}
+          onViewOrder={handleViewOrder}
+          onGoHome={handleGoHome}
+        />
+      </div>
+    );
+  }
+
+  // ─── 2. Payment Captured & Finalizing in Backend → Clean Transition ─────────
+  if (isSaving) {
+    return (
+      <div className="min-h-dvh bg-gradient-to-b from-[#F5FCF8] via-[#FAF8F1] to-white flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white rounded-[26px] p-8 max-w-sm w-full shadow-xl border border-[#EAEAEA] text-center flex flex-col items-center"
+        >
+          <div className="w-16 h-16 rounded-full bg-[#EAF8F0] flex items-center justify-center mb-4 relative">
+            <div className="w-16 h-16 rounded-full border-3 border-[#EAF8F0] border-t-[#00A651] animate-spin absolute" />
+            <ShieldCheck size={28} className="text-[#00A651]" />
+          </div>
+          <h3 className="text-lg font-black text-[#111111] mb-1.5">
+            Finalizing Your Order...
+          </h3>
+          <p className="text-xs text-[#666666] leading-relaxed">
+            Verifying payment & securing your farm-fresh items. Please do not close or refresh.
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!pendingOrder) {
     return (
       <div className="min-h-dvh bg-[#FAFAFA] flex items-center justify-center p-4">
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm max-w-sm w-full text-center">
@@ -174,7 +213,7 @@ export default function PaymentPage() {
     );
   }
 
-  const activeOrder = pendingOrder || successfulOrder!;
+  const activeOrder = pendingOrder;
   const {
     total,
     subtotal,
@@ -325,15 +364,6 @@ export default function PaymentPage() {
 
   return (
     <div className="min-h-dvh bg-[#F9FAF9] pb-24">
-      {/* ─── Animated Order Success Modal ─────────────────────────────────── */}
-      <OrderSuccessModal
-        isOpen={Boolean(successfulOrder)}
-        orderId={successfulOrder?.orderId || ""}
-        totalAmount={successfulOrder?.total}
-        onViewOrder={handleViewOrder}
-        onGoHome={handleGoHome}
-      />
-
       {/* Top Header */}
       <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-[#EAEAEA] px-4 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
