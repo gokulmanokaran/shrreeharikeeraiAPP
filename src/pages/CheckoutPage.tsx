@@ -4,7 +4,6 @@ import {
   ChevronRight,
   Truck,
   MapPin,
-  Tag,
   Edit3,
   Navigation,
   User,
@@ -27,7 +26,7 @@ import {
   type CheckoutErrors,
   type DeliveryLocation,
 } from "../utils/validation";
-import { DEFAULT_MINIMUM_ORDER, isValidPincode } from "../data/deliveryZones";
+import { isValidPincode, MINIMUM_ORDER_VALUE, calculateDeliveryCharge } from "../data/deliveryZones";
 import { useAuth } from "../store/AuthContext";
 
 const sectionVariants = {
@@ -97,13 +96,13 @@ function AddrChip({ label, color }: { label: string; color: "green" | "gray" | "
 // ─── Page ────────────────────────────────────────────────────────────────────
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const { items, subtotal, discount, discountedSubtotal, clearCart } = useCart();
-  const { pincode, deliveryCharge, minimumOrder, setPincode } = useDelivery();
+  const { items, subtotal } = useCart();
+  const { pincode, setPincode } = useDelivery();
   const { getProductById } = useProductCatalog();
 
-  const charge = deliveryCharge ?? 0;
-  const minOrder = minimumOrder ?? DEFAULT_MINIMUM_ORDER;
-  const total = discountedSubtotal + charge;
+  const minOrder = MINIMUM_ORDER_VALUE;
+  const charge = calculateDeliveryCharge(subtotal);
+  const total = subtotal + charge;
 
   const saved = loadSavedGuest();
   const { profile, user } = useAuth();
@@ -266,8 +265,8 @@ export default function CheckoutPage() {
       userId: user?.id || profile?.id || undefined,
       total,
       subtotal,
-      discount: discount.amount,
-      discountPercentage: discount.percentage,
+      discount: 0,
+      discountPercentage: 0,
       deliveryCharge: charge,
       fullName: fullName.trim(),
       mobile: mobile.trim(),
@@ -595,7 +594,9 @@ export default function CheckoutPage() {
                   <p className="text-xs text-[#666666] mt-0.5">Order placed today will be delivered tomorrow evening guaranteed</p>
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <p className="text-base font-black text-[#00A651]">₹{charge}</p>
+                  <p className="text-base font-black text-[#00A651]">
+                    {charge === 0 ? "FREE" : `₹${charge}`}
+                  </p>
                   <p className="text-xs text-[#999999]">charge</p>
                 </div>
               </div>
@@ -636,17 +637,15 @@ export default function CheckoutPage() {
                   <span className="text-[#666666]">Subtotal</span>
                   <span className="font-semibold text-[#111111]">₹{subtotal}</span>
                 </div>
-                {discount.amount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#00A651] flex items-center gap-1">
-                      <Tag size={12} />Discount ({discount.percentage}%)
-                    </span>
-                    <span className="font-semibold text-[#00A651]">−₹{discount.amount}</span>
-                  </div>
-                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-[#666666]">Delivery Charge</span>
-                  <span className="font-semibold text-[#111111]">₹{charge}</span>
+                  <span className="font-semibold">
+                    {charge === 0 ? (
+                      <span className="text-[#00A651]">FREE (₹0)</span>
+                    ) : (
+                      <span className="text-[#111111]">₹{charge}</span>
+                    )}
+                  </span>
                 </div>
                 <div className="border-t border-[#EAEAEA] pt-2 flex justify-between">
                   <span className="font-bold text-[#111111]">Total Payable</span>

@@ -89,18 +89,18 @@ export function EcommerceHero() {
                 <Truck size={12} />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-extrabold text-white leading-tight">Distance Delivery</p>
-                <p className="text-[9px] text-white/75 font-medium truncate">From ₹30 to ₹80</p>
+                <p className="text-[11px] font-extrabold text-white leading-tight">₹30 Delivery</p>
+                <p className="text-[9px] text-white/75 font-medium truncate">Free delivery above ₹300</p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 bg-white/12 backdrop-blur-sm rounded-[12px] p-2 border border-white/10">
               <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 text-white">
-                🏷️
+                📍
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-extrabold text-white leading-tight">Up to 10% Off</p>
-                <p className="text-[9px] text-white/75 font-medium truncate">Auto discount on order</p>
+                <p className="text-[11px] font-extrabold text-white leading-tight">Min Order ₹199</p>
+                <p className="text-[9px] text-white/75 font-medium truncate">8 Coimbatore Pincodes</p>
               </div>
             </div>
 

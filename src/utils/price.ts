@@ -1,3 +1,11 @@
+import {
+  MINIMUM_ORDER_VALUE,
+  FREE_DELIVERY_THRESHOLD,
+  BASE_DELIVERY_CHARGE,
+  FREE_DELIVERY_CHARGE,
+  calculateDeliveryCharge as getZoneDeliveryCharge,
+} from "../data/deliveryZones";
+
 export function formatPrice(amount: number): string {
   return `₹${amount}`;
 }
@@ -12,33 +20,34 @@ export function calculateSubtotal(
   return items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 }
 
-// ── Discount Rules ───────────────────────────────────────────────────────────
-//  subtotal < ₹300        → 0% discount
-//  ₹300 ≤ subtotal < ₹499 → 5% discount
-//  subtotal ≥ ₹499        → 10% discount  (never stacked with 5%)
-
+// ── Discount / Coupon functionality removed ──────────────────────────────────
 export interface DiscountResult {
-  rate: number;        // 0, 0.05, or 0.10
-  percentage: number;  // 0, 5, or 10  (for display)
-  amount: number;      // Actual ₹ discount (rounded to 2dp)
+  rate: number;
+  percentage: number;
+  amount: number;
 }
 
-export function calculateDiscount(subtotal: number): DiscountResult {
-  let rate = 0;
-  if (subtotal >= 499) {
-    rate = 0.10;
-  } else if (subtotal >= 300) {
-    rate = 0.05;
-  }
-  const amount = Math.round(subtotal * rate * 100) / 100;
-  return { rate, percentage: rate * 100, amount };
+export function calculateDiscount(_subtotal: number): DiscountResult {
+  return { rate: 0, percentage: 0, amount: 0 };
 }
+
+/**
+ * Calculate final delivery charge:
+ * - ₹30 for orders from ₹199 to ₹299
+ * - ₹0 (Free Delivery) for orders ₹300 or above
+ */
+export function calculateDeliveryCharge(subtotal: number, pincode?: string): number {
+  return getZoneDeliveryCharge(subtotal, pincode);
+}
+
+export const calculateDelivery = calculateDeliveryCharge;
 
 export function calculateTotal(subtotal: number, deliveryCharge: number): number {
-  const { amount: discount } = calculateDiscount(subtotal);
-  return subtotal - discount + deliveryCharge;
+  return subtotal + deliveryCharge;
 }
 
-export function getMinimumOrderShortfall(subtotal: number, minimum: number): number {
+export function getMinimumOrderShortfall(subtotal: number, minimum: number = MINIMUM_ORDER_VALUE): number {
   return Math.max(0, minimum - subtotal);
 }
+
+export { MINIMUM_ORDER_VALUE, FREE_DELIVERY_THRESHOLD, BASE_DELIVERY_CHARGE, FREE_DELIVERY_CHARGE };

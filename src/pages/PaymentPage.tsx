@@ -257,6 +257,17 @@ export default function PaymentPage() {
         description: `Shree Hari Keerai — Order #${sessionOrderId}`,
         userId: currentUserId,
         preferredMethod: methodInfo.rzpMethod,
+        pincode: activeOrder.pincode,
+        items: (orderItems || []).map((i) => ({
+          id: i.id,
+          productId: i.productId || i.id,
+          variantId: i.variantId,
+          name: i.name,
+          nameTamil: i.nameTamil,
+          quantity: i.quantity,
+          price: i.price,
+          unit: i.unit,
+        })),
         onPaymentFailed: (errorMsg) => {
           setErrorMessage(errorMsg);
         },
@@ -596,20 +607,13 @@ export default function PaymentPage() {
               <span className="font-semibold text-gray-900">₹{subtotal}</span>
             </div>
 
-            {discount > 0 && (
-              <div className="flex justify-between text-[#00A651] font-bold">
-                <span>Offer Discount</span>
-                <span>-₹{discount}</span>
-              </div>
-            )}
-
             <div className="flex justify-between text-gray-600">
               <span>Delivery Charge</span>
-              <span className="font-semibold text-gray-900">
+              <span className="font-semibold">
                 {charge === 0 ? (
-                  <span className="text-[#00A651] font-bold">FREE</span>
+                  <span className="text-[#00A651] font-bold">FREE (₹0)</span>
                 ) : (
-                  `₹${charge}`
+                  <span className="text-gray-900 font-semibold">₹{charge}</span>
                 )}
               </span>
             </div>

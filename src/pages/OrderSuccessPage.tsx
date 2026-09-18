@@ -5,7 +5,6 @@ import {
   Truck,
   Calendar,
   MapPin,
-  Tag,
   ExternalLink,
   User,
   Phone,
@@ -66,14 +65,16 @@ export default function OrderSuccessPage() {
     }
   }, [order, navigate]);
 
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   if (!order) return null;
 
   const orderId = order.orderId || "";
   const total = order.total ?? 230;
   const subtotal = order.subtotal ?? total;
   const deliveryCharge = order.deliveryCharge ?? 30;
-  const discount = order.discount ?? 0;
-  const discountPercentage = order.discountPercentage ?? 0;
   const lat = order.lat;
   const lng = order.lng;
   const address = order.address;
@@ -85,10 +86,6 @@ export default function OrderSuccessPage() {
   const alternateMobile = order.alternateMobile;
   const email = order.email;
   const items = order.items || [];
-
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
 
   return (
     <div className="min-h-dvh bg-gradient-to-b from-[#F5FCF8] via-[#FAF8F1] to-white pb-16">
@@ -221,18 +218,11 @@ export default function OrderSuccessPage() {
               <span>Subtotal</span>
               <span className="font-semibold text-[#111111]">₹{subtotal}</span>
             </div>
-            {discount > 0 && (
-              <div className="flex justify-between text-xs text-[#00A651]">
-                <span className="flex items-center gap-1">
-                  <Tag size={12} />
-                  Discount ({discountPercentage}%)
-                </span>
-                <span className="font-semibold">−₹{discount}</span>
-              </div>
-            )}
             <div className="flex justify-between text-xs text-[#666666]">
               <span>Delivery Charge</span>
-              <span className="font-semibold text-[#111111]">₹{deliveryCharge}</span>
+              <span className={`font-semibold ${deliveryCharge === 0 ? "text-[#00A651]" : "text-[#111111]"}`}>
+                {deliveryCharge === 0 ? "FREE" : `₹${deliveryCharge}`}
+              </span>
             </div>
           </div>
 

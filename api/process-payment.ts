@@ -22,6 +22,10 @@ import {
   sanitizeString,
   safeTimingEqual,
   getCloudProducts,
+  isValidServerPincode,
+  calculateServerDeliveryCharge,
+  SERVER_MINIMUM_ORDER,
+  SERVER_UNSUPPORTED_PINCODE_MESSAGE,
 } from "./_catalog.js";
 import { getSupabaseServerClient } from "./_supabase.js";
 
@@ -524,6 +528,14 @@ export default async function handler(req: any, res?: any): Promise<any> {
     return sendApiResponse(res, 400, { error: "Missing required customer name or mobile." });
   }
 
+  // ── 0b. Strict Server Pincode Validation ──────────────────────────────────
+  if (!sanitizedPincode || !isValidServerPincode(sanitizedPincode)) {
+    return sendApiResponse(res, 400, {
+      success: false,
+      error: SERVER_UNSUPPORTED_PINCODE_MESSAGE,
+    });
+  }
+
   // ── 1. Razorpay signature verification ───────────────────────────────────
   // When a razorpayOrderId is present (i.e. this is a real Razorpay payment),
   // we MUST verify the signature. A missing or invalid signature is rejected
@@ -605,10 +617,18 @@ export default async function handler(req: any, res?: any): Promise<any> {
     computedSubtotal = validatedItems.reduce((acc, i) => acc + i.price * i.quantity, 0);
   }
 
-  const rawDiscount = Math.max(0, Number(data.discount) || 0);
-  const validatedDiscount = Math.min(computedSubtotal, rawDiscount);
-  const validatedDeliveryCharge = Math.max(0, Number(data.deliveryCharge) || 0);
-  const computedTotal = Math.round(Math.max(0, computedSubtotal - validatedDiscount + validatedDeliveryCharge) * 100) / 100;
+  // ── 2b. Minimum Order Value Check (₹199) ───────────────────────────────────
+  if (computedSubtotal < SERVER_MINIMUM_ORDER) {
+    return sendApiResponse(res, 400, {
+      success: false,
+      error: `Minimum order value is ₹${SERVER_MINIMUM_ORDER}.`,
+    });
+  }
+
+  // ── 2c. Authoritative Delivery & Discount Validation ──────────────────────
+  const validatedDiscount = 0; // Discount/coupon functionality completely removed
+  const validatedDeliveryCharge = calculateServerDeliveryCharge(computedSubtotal, sanitizedPincode);
+  const computedTotal = Math.round((computedSubtotal + validatedDeliveryCharge) * 100) / 100;
 
   // ── 3. Resolve / Generate Sequential Order ID (Database-side) ─────────────
   const supabase = getSupabaseServerClient();

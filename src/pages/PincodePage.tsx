@@ -40,9 +40,7 @@ export default function PincodePage() {
       setTimeout(() => navigate("/", { replace: true }), 2200);
     } else {
       setStatus("error");
-      setErrorMsg(
-        "We're not delivering to your area yet. Please try another pincode."
-      );
+      setErrorMsg("Sorry, delivery is not available for this pincode.");
     }
   };
 
@@ -167,12 +165,12 @@ export default function PincodePage() {
                         <Truck size={13} className="text-[#00A651]" />
                         <p className="text-sm text-[#666666]">
                           Delivery charge:{" "}
-                          <span className="font-bold text-[#00A651]">₹{charge}</span>
+                          <span className="font-bold text-[#00A651]">₹30 (Free over ₹300)</span>
                         </p>
                       </div>
                       {minOrder !== null && (
                         <p className="text-xs text-[#666666]">
-                          Min. order for your area:{" "}
+                          Min. order:{" "}
                           <span className="font-bold text-[#111111]">₹{minOrder}</span>
                         </p>
                       )}
@@ -186,7 +184,7 @@ export default function PincodePage() {
                   </div>
                 </motion.div>
               ) : status === "error" &&
-                errorMsg.includes("not delivering") ? (
+                errorMsg.includes("delivery is not available") ? (
                 /* ── Unavailable state ──────────────────────── */
                 <motion.div
                   key="unavailable"
@@ -200,11 +198,10 @@ export default function PincodePage() {
                   </div>
                   <div>
                     <h2 className="text-lg font-black text-[#111111] mb-2">
-                      We're not delivering here yet
+                      Sorry, delivery is not available for this pincode.
                     </h2>
                     <p className="text-sm text-[#666666] leading-relaxed">
-                      Delivery to your area will be available in the future.
-                      Please check again later.
+                      We currently deliver exclusively to select service pincodes in Coimbatore.
                     </p>
                   </div>
                   <Button variant="outline" size="md" onClick={handleReset}>

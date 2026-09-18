@@ -15,6 +15,17 @@
  * via startActivity(Intent.parseUri(...)).  See ANDROID_API_INTEGRATION.md §8.
  */
 
+export interface OrderItem {
+  id?: string;
+  productId?: string;
+  variantId?: string;
+  name: string;
+  nameTamil?: string;
+  quantity: number;
+  price: number;
+  unit?: string;
+}
+
 export interface PaymentPayload {
   orderId: string;
   amount: number; // in INR (rupees, not paise)
@@ -25,6 +36,8 @@ export interface PaymentPayload {
   description: string;
   userId?: string;
   preferredMethod?: string;
+  pincode?: string;
+  items?: OrderItem[];
   onPaymentFailed?: (errorMsg: string) => void;
 }
 
@@ -167,14 +180,14 @@ export function loadRazorpayScript(): Promise<boolean> {
 }
 
 /**
- * Server-side Razorpay Order Creator (creates official order_... on Razorpay server)
+ * Server-side Razorpay Order Creator (creates official order_... on Razorpay server with strict validation)
  */
-async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<string | undefined> {
+async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<{ orderId?: string; validatedAmount?: number; error?: string } | undefined> {
   if (typeof window === "undefined") return undefined;
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     const res = await fetch("/api/create-razorpay-order", {
       method: "POST",
@@ -183,11 +196,14 @@ async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<stri
         amount: payload.amount,
         receipt: payload.orderId,
         currency: payload.currency || "INR",
+        pincode: payload.pincode,
+        items: payload.items,
         notes: {
           storefrontOrderId: payload.orderId,
           userId: payload.userId || "",
           customerEmail: payload.customerEmail || "",
           customerPhone: payload.customerPhone || "",
+          pincode: payload.pincode || "",
         },
       }),
       signal: controller.signal,
@@ -196,12 +212,15 @@ async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<stri
     if (res.ok) {
       const data = await res.json();
       if (data.orderId) {
-        console.info(`[PaymentService] ✅ Created Razorpay server order: ${data.orderId}`);
-        return data.orderId;
+        console.info(`[PaymentService] ✅ Created Razorpay server order: ${data.orderId} (₹${data.validatedAmount || payload.amount})`);
+        return { orderId: data.orderId, validatedAmount: data.validatedAmount };
       }
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      return { error: errData.error || "Payment order creation failed." };
     }
   } catch (e) {
-    console.warn("[PaymentService] Server-side Razorpay order creation skipped/timed out; using standard client checkout:", e);
+    console.warn("[PaymentService] Server-side Razorpay order creation notice:", e);
   }
   return undefined;
 }
@@ -226,8 +245,16 @@ export async function processPayment(payload: PaymentPayload): Promise<PaymentRe
     };
   }
 
-  // Attempt backend order generation with notes
-  const backendOrderId = await createBackendRazorpayOrder(payload);
+  // Attempt backend order generation with notes & validation
+  const backendResult = await createBackendRazorpayOrder(payload);
+  if (backendResult?.error) {
+    return {
+      success: false,
+      error: backendResult.error,
+    };
+  }
+  const backendOrderId = backendResult?.orderId;
+  const paymentAmount = backendResult?.validatedAmount ?? payload.amount;
 
   const androidWebView = isAndroidWebView();
 
@@ -237,7 +264,7 @@ export async function processPayment(payload: PaymentPayload): Promise<PaymentRe
 
     const options: RazorpayOptions = {
       key: razorpayKey,
-      amount: Math.round(payload.amount * 100), // Amount in paise
+      amount: Math.round(paymentAmount * 100), // Amount in paise
       currency: payload.currency || "INR",
       name: "Shree Hari Keerai",
       description: payload.description || `Order #${payload.orderId}`,

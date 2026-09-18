@@ -628,3 +628,34 @@ export async function getOrGenerateSequentialOrderId(
   return fallbackId;
 }
 
+// ─── Server Delivery Validation & Pricing Hardening ───────────────────────────
+export const ALLOWED_DELIVERY_PINCODES = [
+  "641014",
+  "641048",
+  "641051",
+  "641004",
+  "641035",
+  "641062",
+  "641028",
+  "641107",
+] as const;
+
+export const SERVER_MINIMUM_ORDER = 199;
+export const SERVER_FREE_DELIVERY_THRESHOLD = 300;
+export const SERVER_BASE_DELIVERY_CHARGE = 30;
+export const SERVER_UNSUPPORTED_PINCODE_MESSAGE = "Sorry, delivery is not available for this pincode.";
+
+export function isValidServerPincode(pincode?: string | null): boolean {
+  if (!pincode) return false;
+  const clean = String(pincode).trim();
+  return (ALLOWED_DELIVERY_PINCODES as readonly string[]).includes(clean);
+}
+
+export function calculateServerDeliveryCharge(subtotal: number, _pincode?: string | null): number {
+  if (subtotal >= SERVER_FREE_DELIVERY_THRESHOLD) {
+    return 0;
+  }
+  return SERVER_BASE_DELIVERY_CHARGE;
+}
+
+

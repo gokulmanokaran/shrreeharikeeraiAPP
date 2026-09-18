@@ -505,7 +505,7 @@ export function MapLocationPicker({
                         ✓ Delivery Available to {detectedPincode}
                       </p>
                       <p className="text-[11px] text-[#555555]">
-                        {deliveryZone?.zoneName || "Coimbatore Zone"} · Delivery ₹{deliveryZone?.charge} (Min order ₹{deliveryZone?.minimumOrder})
+                        Delivery ₹30 (Free over ₹300) · Min order ₹199
                       </p>
                     </div>
                   </div>
@@ -518,13 +518,13 @@ export function MapLocationPicker({
                   <AlertCircle size={18} className="text-[#EA4335] flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="text-xs font-bold text-[#EA4335]">
-                      Sorry, we currently do not deliver to this location.
+                      Sorry, delivery is not available for this pincode.
                     </p>
                     <p className="text-[11px] text-[#666666] mt-0.5 leading-tight">
                       {detectedPincode
-                        ? `Detected pincode ${detectedPincode} is outside our active delivery area.`
+                        ? `Detected pincode ${detectedPincode} is not in our active delivery area.`
                         : "No serviceable pincode detected for this pin spot."}{" "}
-                      Please choose a location within Coimbatore service zones.
+                      Please select a location within our 8 service pincodes in Coimbatore.
                     </p>
                   </div>
                 </div>
@@ -601,7 +601,7 @@ export function MapLocationPicker({
                 <ChevronRight size={20} strokeWidth={2.5} />
               </>
             ) : (
-              "Sorry, we currently do not deliver to this location"
+              "Sorry, delivery is not available for this pincode."
             )}
           </button>
         </div>

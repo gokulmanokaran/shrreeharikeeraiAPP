@@ -37,11 +37,13 @@ const DeliveryContext = createContext<DeliveryContextValue | null>(null);
 
 export function DeliveryProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<DeliveryState>(() => {
-    const pincode = getItem<string>(STORAGE_KEYS.PINCODE, "");
-    const deliveryCharge = getItem<number | null>(STORAGE_KEYS.DELIVERY_CHARGE, null);
-    const isAvailable = getItem<boolean>(STORAGE_KEYS.DELIVERY_AVAILABLE, false);
-    const isChecked = Boolean(pincode && isValidPincode(pincode));
-    const minimumOrder = isChecked ? getMinimumOrder(pincode) : null;
+    const rawPincode = getItem<string>(STORAGE_KEYS.PINCODE, "");
+    const isValid = Boolean(rawPincode && isValidPincode(rawPincode));
+    const pincode = isValid ? rawPincode.trim() : "";
+    const deliveryCharge = isValid ? getDeliveryCharge(pincode) : null;
+    const isAvailable = isValid;
+    const isChecked = isValid;
+    const minimumOrder = isValid ? getMinimumOrder(pincode) : null;
     return { pincode, deliveryCharge, minimumOrder, isAvailable, isChecked };
   });
 
@@ -54,11 +56,12 @@ export function DeliveryProvider({ children }: { children: React.ReactNode }) {
 
   const checkPincode = useCallback(
     (pincode: string): { success: boolean; charge: number | null; minimumOrder: number | null } => {
-      const charge = getDeliveryCharge(pincode.trim());
-      const available = charge !== null;
-      const minOrder = available ? getMinimumOrder(pincode.trim()) : null;
+      const clean = pincode.trim();
+      const available = isValidPincode(clean);
+      const charge = available ? getDeliveryCharge(clean) : null;
+      const minOrder = available ? getMinimumOrder(clean) : null;
       setState({
-        pincode: pincode.trim(),
+        pincode: clean,
         deliveryCharge: charge,
         minimumOrder: minOrder,
         isAvailable: available,
@@ -70,13 +73,15 @@ export function DeliveryProvider({ children }: { children: React.ReactNode }) {
   );
 
   const setPincode = useCallback((pincode: string) => {
-    const charge = getDeliveryCharge(pincode.trim());
-    const minOrder = charge !== null ? getMinimumOrder(pincode.trim()) : null;
+    const clean = pincode.trim();
+    const available = isValidPincode(clean);
+    const charge = available ? getDeliveryCharge(clean) : null;
+    const minOrder = available ? getMinimumOrder(clean) : null;
     setState({
-      pincode: pincode.trim(),
+      pincode: clean,
       deliveryCharge: charge,
       minimumOrder: minOrder,
-      isAvailable: charge !== null,
+      isAvailable: available,
       isChecked: true,
     });
   }, []);

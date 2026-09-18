@@ -1,13 +1,12 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Minus, Plus, Trash2, ShoppingBag, Tag, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Minus, Plus, Trash2, ShoppingBag, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../store/CartContext";
-import { useDelivery } from "../store/DeliveryContext";
 import { useProductCatalog } from "../store/ProductContext";
 import { useAuth } from "../store/AuthContext";
 import { ProductImage } from "../components/ui/ProductImage";
 import { Button } from "../components/ui/Button";
-import { DEFAULT_MINIMUM_ORDER } from "../data/deliveryZones";
+import { calculateDeliveryCharge, MINIMUM_ORDER_VALUE } from "../utils/price";
 
 export default function CartPage() {
   const navigate = useNavigate();
@@ -15,21 +14,17 @@ export default function CartPage() {
     items,
     itemCount,
     subtotal,
-    discount,
-    discountedSubtotal,
     incrementItem,
     decrementItem,
     removeItem,
     clearCart,
   } = useCart();
-  const { deliveryCharge, minimumOrder } = useDelivery();
   const { getProductById } = useProductCatalog();
   const { user } = useAuth();
 
-  const charge = deliveryCharge ?? 0;
-  // Use per-pincode minimum order (falls back to default if not available)
-  const minOrder = minimumOrder ?? DEFAULT_MINIMUM_ORDER;
-  const total = discountedSubtotal + charge;
+  const minOrder = MINIMUM_ORDER_VALUE;
+  const charge = calculateDeliveryCharge(subtotal);
+  const total = subtotal + charge;
   const shortfall = Math.max(0, minOrder - subtotal);
 
   // Check if any items are currently out of stock in live catalog
@@ -137,21 +132,7 @@ export default function CartPage() {
               Add ₹{shortfall} more to place your order.
             </p>
             <p className="text-amber-600 text-xs mt-0.5">
-              Minimum order value for your area is ₹{minOrder}
-            </p>
-          </motion.div>
-        )}
-
-        {/* Discount badge */}
-        {discount.amount > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mx-4 mt-3 bg-green-50 border border-green-200 rounded-[14px] px-4 py-2.5 flex items-center gap-2"
-          >
-            <Tag size={14} className="text-[#00A651] flex-shrink-0" />
-            <p className="text-[#087A43] text-sm font-semibold">
-              🎉 {discount.percentage}% discount applied — you save ₹{discount.amount}!
+              Minimum order value is ₹{minOrder}
             </p>
           </motion.div>
         )}
@@ -306,18 +287,15 @@ export default function CartPage() {
               <span className="text-[#666666]">Subtotal ({itemCount} items)</span>
               <span className="font-semibold text-[#111111]">₹{subtotal}</span>
             </div>
-            {discount.amount > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-[#00A651] flex items-center gap-1">
-                  <Tag size={12} />
-                  Discount ({discount.percentage}%)
-                </span>
-                <span className="font-semibold text-[#00A651]">−₹{discount.amount}</span>
-              </div>
-            )}
             <div className="flex justify-between text-sm">
               <span className="text-[#666666]">Delivery Charge</span>
-              <span className="font-semibold text-[#111111]">₹{charge}</span>
+              <span className="font-semibold">
+                {charge === 0 ? (
+                  <span className="text-[#00A651]">FREE (₹0)</span>
+                ) : (
+                  <span className="text-[#111111]">₹{charge}</span>
+                )}
+              </span>
             </div>
             <div className="border-t border-[#EAEAEA] pt-2 flex justify-between">
               <span className="font-bold text-[#111111]">Total</span>

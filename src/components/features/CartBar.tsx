@@ -2,19 +2,18 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ShoppingBag, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../../store/CartContext";
-import { useDelivery } from "../../store/DeliveryContext";
-import { DEFAULT_MINIMUM_ORDER } from "../../data/deliveryZones";
+import { calculateDeliveryCharge, MINIMUM_ORDER_VALUE } from "../../utils/price";
 
 export function CartBar() {
-  const { itemCount, subtotal, discountedSubtotal } = useCart();
-  const { deliveryCharge, minimumOrder } = useDelivery();
+  const { itemCount, subtotal } = useCart();
   const navigate = useNavigate();
 
   const isVisible = itemCount > 0;
-  const minOrder = minimumOrder ?? DEFAULT_MINIMUM_ORDER;
+  const minOrder = MINIMUM_ORDER_VALUE;
   const shortfall = Math.max(0, minOrder - subtotal);
   const canCheckout = subtotal >= minOrder;
-  const total = discountedSubtotal + (deliveryCharge ?? 0);
+  const deliveryCharge = calculateDeliveryCharge(subtotal);
+  const total = subtotal + deliveryCharge;
 
   return (
     <AnimatePresence>

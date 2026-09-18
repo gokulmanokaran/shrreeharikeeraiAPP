@@ -62,9 +62,9 @@ export default function TermsPage() {
             <h2 className="text-sm font-bold">3. Serviceable Delivery Locations</h2>
           </div>
           <p className="text-xs text-[#555555] leading-relaxed">
-            We deliver exclusively within designated service pincodes in <strong>Coimbatore, Tamil Nadu</strong>.
-            Delivery charges (₹30 / ₹50 / ₹80) and minimum order limits (₹199 / ₹249 / ₹299) depend on your delivery zone.
-            Addresses located outside our active delivery zones cannot be served and will be prevented at checkout.
+            We deliver exclusively within 8 designated service pincodes in <strong>Coimbatore, Tamil Nadu</strong> (641014, 641048, 641051, 641004, 641035, 641062, 641028, 641107).
+            Delivery charge is ₹30 for orders from ₹199 to ₹299, and ₹0 (Free Delivery) for orders ₹300 or above. Minimum order value is ₹199.
+            Addresses located outside our 8 allowed pincodes cannot be served and will be prevented at checkout.
           </p>
         </div>
 

@@ -19,7 +19,7 @@ export function validateLocationPin(
     return "Please select a valid delivery location on Google Maps.";
   }
   if (!pincode || !isValidPincode(pincode)) {
-    return "Sorry, we currently do not deliver to this location.";
+    return "Sorry, delivery is not available for this pincode.";
   }
   return null;
 }
@@ -146,6 +146,6 @@ export function validateCheckoutPincode(pincode: string): string | null {
   const basic = validatePincode(pincode);
   if (basic) return basic;
   if (!isValidPincode(pincode.trim()))
-    return "Sorry, we currently do not deliver to this location.";
+    return "Sorry, delivery is not available for this pincode.";
   return null;
 }
