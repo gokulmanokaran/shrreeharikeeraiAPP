@@ -14,6 +14,7 @@ import {
   Phone,
   RefreshCw,
   ShoppingBag,
+  Home,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import { useDelivery } from "../store/DeliveryContext";
 import { useProductCatalog } from "../store/ProductContext";
 import { useAuth } from "../store/AuthContext";
 import { Button } from "../components/ui/Button";
+import { OrderSuccessModal } from "../components/features/OrderSuccessModal";
 import { processPayment } from "../services/paymentService";
 import { submitOrderNotification, type OrderNotificationPayload } from "../services/orderService";
 import { deductLiveProductStock } from "../services/productService";
@@ -98,6 +100,7 @@ export default function PaymentPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showItems, setShowItems] = useState(false);
+  const [successfulOrder, setSuccessfulOrder] = useState<OrderNotificationPayload | null>(null);
   const isNavigatingRef = useRef(false);
 
   /**
@@ -135,18 +138,26 @@ export default function PaymentPage() {
     return null;
   }, [location.state]);
 
-  // If no order data and no cart items, redirect back to cart
+  // If no order data and no cart items, redirect back to cart (unless success modal is showing)
   useEffect(() => {
-    if (!pendingOrder && items.length === 0 && !isNavigatingRef.current) {
+    if (!pendingOrder && !successfulOrder && items.length === 0 && !isNavigatingRef.current) {
       navigate("/cart", { replace: true });
     }
-  }, [pendingOrder, items.length, navigate]);
+  }, [pendingOrder, items.length, successfulOrder, navigate]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
-  if (!pendingOrder) {
+  const handleViewOrder = () => {
+    navigate("/orders", { replace: true });
+  };
+
+  const handleGoHome = () => {
+    navigate("/", { replace: true });
+  };
+
+  if (!pendingOrder && !successfulOrder) {
     return (
       <div className="min-h-dvh bg-[#FAFAFA] flex items-center justify-center p-4">
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm max-w-sm w-full text-center">
@@ -163,6 +174,7 @@ export default function PaymentPage() {
     );
   }
 
+  const activeOrder = pendingOrder || successfulOrder!;
   const {
     total,
     subtotal,
@@ -173,12 +185,12 @@ export default function PaymentPage() {
     email,
     address,
     items: orderItems,
-  } = pendingOrder;
+  } = activeOrder;
 
-  const currentUserId = user?.id || profile?.id || pendingOrder.userId;
+  const currentUserId = user?.id || profile?.id || activeOrder.userId;
 
   const handlePayWithRazorpay = async () => {
-    if (isProcessing || isSaving) return; // Prevent duplicate triggers
+    if (isProcessing || isSaving || successfulOrder) return; // Prevent duplicate triggers
 
     // ── Generate or reuse this session's unique Order ID ─────────────────────
     // A fresh unique ID is generated on the FIRST click and reused for any
@@ -235,7 +247,7 @@ export default function PaymentPage() {
       const razorpaySignature = paymentResult.razorpaySignature || "";
 
       const completedOrder: OrderNotificationPayload = {
-        ...pendingOrder,
+        ...activeOrder,
         orderId: sessionOrderId,  // Use our generated unique ID (not stale "" from checkout)
         userId: currentUserId,
         email: email || user?.email || profile?.email || "",
@@ -248,7 +260,7 @@ export default function PaymentPage() {
 
       // ── Backend Verification + DB Save + Email + Sheets (MANDATORY) ─────────
       // Verifies Razorpay signature, saves to Supabase, sends emails, updates Sheets.
-      // If this fails, we do NOT navigate to success — we surface an error with
+      // If this fails, we do NOT show success — we surface an error with
       // the payment ID so the customer can contact support.
       const orderResult = await submitOrderNotification(completedOrder);
 
@@ -279,9 +291,12 @@ export default function PaymentPage() {
         localStorage.removeItem(PENDING_ORDER_KEY);
       } catch { /* ignore */ }
 
-      // ── Navigate to success ─────────────────────────────────────────────────
+      // ── Show Success Modal immediately (No separate confirmation page redirect) ─
       clearCart();
-      navigate("/order-success", { replace: true, state: finalizedOrder });
+      setIsProcessing(false);
+      setIsSaving(false);
+      isNavigatingRef.current = false;
+      setSuccessfulOrder(finalizedOrder);
 
       // ── Background: refresh product stock (non-blocking) ──────────────────────
       deductLiveProductStock(finalizedOrder.items).catch(() => {});
@@ -300,6 +315,7 @@ export default function PaymentPage() {
   };
 
   const handleBack = () => {
+    if (successfulOrder) return;
     if (window.history.length > 1) {
       navigate(-1);
     } else {
@@ -309,12 +325,21 @@ export default function PaymentPage() {
 
   return (
     <div className="min-h-dvh bg-[#F9FAF9] pb-24">
+      {/* ─── Animated Order Success Modal ─────────────────────────────────── */}
+      <OrderSuccessModal
+        isOpen={Boolean(successfulOrder)}
+        orderId={successfulOrder?.orderId || ""}
+        totalAmount={successfulOrder?.total}
+        onViewOrder={handleViewOrder}
+        onGoHome={handleGoHome}
+      />
+
       {/* Top Header */}
       <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-[#EAEAEA] px-4 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
             onClick={handleBack}
-            disabled={isProcessing}
+            disabled={isProcessing || Boolean(successfulOrder)}
             className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
             aria-label="Back to checkout"
           >
@@ -595,15 +620,18 @@ export default function PaymentPage() {
             type="button"
             size="lg"
             onClick={handlePayWithRazorpay}
+            disabled={Boolean(successfulOrder)}
             loading={isProcessing || isSaving}
-            className="flex-1 h-13 text-base font-extrabold rounded-[16px] shadow-lg shadow-[#00A651]/25 hover:shadow-xl transition-all cursor-pointer"
+            className="flex-1 h-13 text-base font-extrabold rounded-[16px] shadow-lg shadow-[#00A651]/25 hover:shadow-xl transition-all cursor-pointer disabled:opacity-50"
           >
             <span>
-              {isSaving
-                ? "Confirming order & sending receipt…"
-                : isProcessing
-                  ? "Opening Gateway…"
-                  : `Pay ₹${total} via ${paymentMethodDetails[selectedMethod].title}`}
+              {successfulOrder
+                ? "Order Placed Successfully 🎉"
+                : isSaving
+                  ? "Confirming order & sending receipt…"
+                  : isProcessing
+                    ? "Opening Gateway…"
+                    : `Pay ₹${total} via ${paymentMethodDetails[selectedMethod].title}`}
             </span>
           </Button>
 
