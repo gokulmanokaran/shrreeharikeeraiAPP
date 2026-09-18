@@ -68,6 +68,8 @@ export interface OrderNotificationResult {
   success: boolean;
   orderId: string;
   alreadyProcessed?: boolean;
+  sheetsSynced?: boolean;
+  emailSent?: boolean;
   message?: string;
   error?: string;
   path?: string; // Which path succeeded: "backend" | "webhook" | "direct" | "queued"
@@ -189,19 +191,21 @@ async function submitViaBackend(
           body: JSON.stringify(requestBody),
           keepalive: true,
         },
-        12_000 // 12s per attempt — backend now returns in ~200ms after DB save
+        16_000 // Safe window for server-side persistence + GAS forward
       );
 
       if (res.ok) {
         const data = await res.json();
         const assignedOrderId = data.orderId || orderId;
         console.info(
-          `[OrderService] ✅ /api/process-payment succeeded | Order: ${assignedOrderId} | AlreadyProcessed: ${data.alreadyProcessed}`
+          `[OrderService] ✅ /api/process-payment succeeded | Order: ${assignedOrderId} | AlreadyProcessed: ${data.alreadyProcessed} | Sheets: ${data.sheetsSynced} | Email: ${data.emailSent}`
         );
         return {
           success: true,
           orderId: assignedOrderId,
           alreadyProcessed: data.alreadyProcessed,
+          sheetsSynced: Boolean(data.sheetsSynced),
+          emailSent: Boolean(data.emailSent),
           message: data.message || "Order processed",
           path: "backend",
         };
@@ -452,9 +456,19 @@ export async function submitOrderNotification(
       /* ignore */
     }
 
-    console.info(
-      `[OrderService] ✅ Order ${finalId} DONE via backend | Payment: ${paymentId} | Path: ${backendResult.path}`
+    if (backendResult.sheetsSynced) {
+      console.info(
+        `[OrderService] ✅ Order ${finalId} DONE via backend (Sheets & Email confirmed) | Payment: ${paymentId} | Path: ${backendResult.path}`
+      );
+      return backendResult;
+    }
+
+    // If backend saved to DB but sheets/email timed out on the server, trigger browser fallback immediately!
+    console.warn(
+      `[OrderService] ⚠️ Backend saved order ${finalId} but sheets/email sync was delayed. Triggering direct fallback...`
     );
+    const enrichedBody = { ...requestBody, orderId: finalId };
+    submitDirectToGas(enrichedBody, webhookUrl, finalId).catch(() => {});
     return backendResult;
   }
 

@@ -14,7 +14,6 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import crypto from "crypto";
-import { waitUntil } from "@vercel/functions";
 import {
   handleCors,
   parseApiRequest,
@@ -118,8 +117,8 @@ async function callGoogleAppsScript(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const controller = new AbortController();
-      // 15s per attempt — generous window for GAS to update sheet & dispatch emails
-      const timeoutId = setTimeout(() => controller.abort(), 15_000);
+      // 20s per attempt — generous window for GAS to acquire lock, update sheet & dispatch emails
+      const timeoutId = setTimeout(() => controller.abort(), 20_000);
 
       const res = await fetch(webhookUrl, {
         method: "POST",
@@ -217,9 +216,9 @@ async function upsertOrderToSupabase(
     if (existingById) {
       existingOrderRow = existingById;
       const isPaid = String(existingById.payment_status || "").toLowerCase().includes("paid");
-      if (isPaid) {
+      if (isPaid && existingById.sheets_synced && existingById.email_sent) {
         console.info(
-          `[process-payment] ℹ️ Order ${assignedOrderId} already exists in DB with paid status. Skipping duplicate notification.`
+          `[process-payment] ℹ️ Order ${assignedOrderId} already exists in DB and is fully synced. Skipping duplicate notification.`
         );
         return { alreadyProcessed: true, existingOrder: existingById, finalOrderId: assignedOrderId };
       }
@@ -234,9 +233,9 @@ async function upsertOrderToSupabase(
 
       if (existingByPayment) {
         const isPaid = String(existingByPayment.payment_status || "").toLowerCase().includes("paid");
-        if (isPaid) {
+        if (isPaid && existingByPayment.sheets_synced && existingByPayment.email_sent) {
           console.info(
-            `[process-payment] ℹ️ Payment ${paymentId} was already processed under order ${existingByPayment.id}. Skipping duplicate.`
+            `[process-payment] ℹ️ Payment ${paymentId} was already processed under order ${existingByPayment.id} and is fully synced. Skipping duplicate.`
           );
           return { alreadyProcessed: true, existingOrder: existingByPayment, finalOrderId: existingByPayment.id };
         }
@@ -748,52 +747,46 @@ export default async function handler(req: any, res?: any): Promise<any> {
     _processedAt: startedAt,
   };
 
-  // ── 6. Trigger GAS in background via Vercel waitUntil (non-blocking) ──────
-  // The customer receives immediate order confirmation without waiting for
-  // Google Sheets or email delivery. Those run reliably in the background.
+  // ── 6. Forward to Google Apps Script (Sheets + Email) with safe timeout ───
+  // Awaited directly to guarantee Google Sheets update and customer/admin emails
+  // complete before the serverless container is frozen.
   const currentRetryCount = existingOrder?.retry_count || 0;
 
-  const backgroundGasPromise = (async () => {
-    try {
-      const gasResult = await callGoogleAppsScript(webhookUrl, gasPayload, 2);
-      const sheetsSynced = gasResult.sheetUpdated || gasResult.success;
-      const emailSent = gasResult.emailSent || gasResult.success;
+  console.info(
+    `[process-payment] 🚀 Forwarding order ${activeOrderId} to Google Apps Script (Sheets + Email)...`
+  );
 
-      await updateNotificationStatus(activeOrderId, {
-        sheets_synced: sheetsSynced,
-        email_sent: emailSent,
-        retry_count: currentRetryCount + gasResult.attempts,
-        last_error: gasResult.success ? null : (gasResult.lastError ?? null),
-        last_attempt_at: new Date().toISOString(),
-      });
+  const gasResult = await callGoogleAppsScript(webhookUrl, gasPayload, 2);
+  const sheetsSynced = gasResult.sheetUpdated || gasResult.success;
+  const emailSent = gasResult.emailSent || gasResult.success;
 
-      if (gasResult.success) {
-        console.info(
-          `[process-payment] ✅ Background GAS complete for order ${activeOrderId} | Payment: ${paymentId} | Sheets: ✅ | Email: ✅`
-        );
-      } else {
-        console.warn(
-          `[process-payment] ⚠️ Background GAS timed out/failed for order ${activeOrderId} | Error: ${gasResult.lastError}`
-        );
-      }
-    } catch (bgErr) {
-      console.error(`[process-payment] Background GAS unhandled error for ${activeOrderId}:`, bgErr);
-    }
-  })();
+  await updateNotificationStatus(activeOrderId, {
+    sheets_synced: sheetsSynced,
+    email_sent: emailSent,
+    retry_count: currentRetryCount + gasResult.attempts,
+    last_error: gasResult.success ? null : (gasResult.lastError ?? null),
+    last_attempt_at: new Date().toISOString(),
+  });
 
-  try {
-    waitUntil(backgroundGasPromise);
-  } catch {
-    // Non-Vercel or test environment fallback (promise is already dispatched)
+  if (gasResult.success) {
+    console.info(
+      `[process-payment] ✅ GAS sync complete for order ${activeOrderId} | Payment: ${paymentId} | Sheets: ✅ | Email: ✅ | Attempts: ${gasResult.attempts}`
+    );
+  } else {
+    console.warn(
+      `[process-payment] ⚠️ GAS sync issue for order ${activeOrderId} | Sheets: ${sheetsSynced} | Email: ${emailSent} | Error: ${gasResult.lastError}`
+    );
   }
 
-  // ── 7. Respond immediately to browser ─────────────────────────────────────
-  // The customer immediately receives the authoritative sequential orderId!
+  // ── 7. Respond to browser ─────────────────────────────────────────────────
   return sendApiResponse(res, 200, {
     success: true,
     orderId: activeOrderId,
     alreadyProcessed: false,
-    message: "Order confirmed and saved successfully.",
+    sheetsSynced,
+    emailSent,
+    message: sheetsSynced && emailSent ? "Order confirmed and notifications sent." : "Order saved in database.",
+    ...(sheetsSynced && emailSent ? {} : { warning: gasResult.lastError || "Sheet or email notification delayed" }),
   });
 }
 

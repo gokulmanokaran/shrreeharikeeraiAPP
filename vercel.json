@@ -5,5 +5,16 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ]
+  ],
+  "functions": {
+    "api/process-payment.ts": {
+      "maxDuration": 30
+    },
+    "api/order-webhook.ts": {
+      "maxDuration": 30
+    },
+    "api/razorpay-webhook.ts": {
+      "maxDuration": 30
+    }
+  }
 }

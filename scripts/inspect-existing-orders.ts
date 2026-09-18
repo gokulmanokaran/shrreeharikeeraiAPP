@@ -8,15 +8,19 @@ const serviceKey = envFile.match(/^SUPABASE_SERVICE_ROLE_KEY=(.*)$/m)?.[1]?.trim
 const supabase = createClient(url, serviceKey!, { auth: { persistSession: false } });
 
 async function inspect() {
-  await supabase.from("orders").delete().like("id", "ORD-%");
-  const { data: orders, error } = await supabase.from("orders").select("id, full_name, total, created_at, payment_status").order("created_at", { ascending: true });
+  const { data: orders, error } = await supabase.from("orders").select("id, full_name, email, mobile, total, payment_status, razorpay_payment_id, razorpay_order_id, razorpay_signature, sheets_synced, email_sent, last_error, last_attempt_at, retry_count, source, created_at").order("created_at", { ascending: false }).limit(10);
   if (error) {
     console.error("Error fetching orders:", error);
     return;
   }
-  console.log(`Found ${orders?.length} existing orders in database:`);
+  console.log(`Top ${orders?.length} most recent orders in DB:`);
   orders?.forEach((o, i) => {
-    console.log(`[${i + 1}] ID: ${o.id} | Name: ${o.full_name} | Total: ₹${o.total} | Status: ${o.payment_status} | Created: ${o.created_at}`);
+    console.log(`\n[#${i + 1}] ID: ${o.id} | Created: ${o.created_at}`);
+    console.log(`     Customer: ${o.full_name} (${o.email}) | Mobile: ${o.mobile}`);
+    console.log(`     Total: ₹${o.total} | Status: ${o.payment_status} | Source: ${o.source}`);
+    console.log(`     Sheets Synced: ${o.sheets_synced} | Email Sent: ${o.email_sent} | Retries: ${o.retry_count}`);
+    console.log(`     Last Attempt: ${o.last_attempt_at} | Last Error: ${o.last_error}`);
+    console.log(`     PaymentId: ${o.razorpay_payment_id} | RzpOrderId: ${o.razorpay_order_id} | Signature: ${o.razorpay_signature ? "YES" : "NO"}`);
   });
 }
 

@@ -546,7 +546,7 @@ export default function PaymentPage() {
           >
             <span>
               {isSaving
-                ? "Saving order…"
+                ? "Confirming order & sending receipt…"
                 : isProcessing
                 ? "Opening Gateway…"
                 : `Pay ₹${total} via ${paymentMethodDetails[selectedMethod].title}`}

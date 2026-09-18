@@ -57,6 +57,11 @@ function localDevApiPlugin(): Plugin {
       server.middlewares.use((req, res, next) => {
         const url = req.url || "";
         const env = loadEnv(server.config.mode, process.cwd(), "");
+        for (const [key, value] of Object.entries(env)) {
+          if (!process.env[key]) {
+            process.env[key] = value;
+          }
+        }
         if (!process.env.SUPABASE_URL) {
           process.env.SUPABASE_URL = env.SUPABASE_URL || env.VITE_SUPABASE_URL || "";
         }
