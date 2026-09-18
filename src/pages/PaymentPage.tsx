@@ -229,8 +229,8 @@ export default function PaymentPage() {
       navigate("/order-success", { replace: true, state: finalizedOrder });
 
       // 4. Trigger stock refresh in background (non-blocking)
-      deductLiveProductStock(finalizedOrder.items).catch(() => {});
-      refreshProducts().catch(() => {});
+      deductLiveProductStock(finalizedOrder.items).catch(() => { });
+      refreshProducts().catch(() => { });
 
     } catch (err) {
       setIsProcessing(false);
@@ -385,11 +385,10 @@ export default function PaymentPage() {
                       key={key}
                       type="button"
                       onClick={() => setSelectedMethod(key)}
-                      className={`flex flex-col items-center justify-center p-2 rounded-xl text-center transition-all cursor-pointer ${
-                        isSelected
+                      className={`flex flex-col items-center justify-center p-2 rounded-xl text-center transition-all cursor-pointer ${isSelected
                           ? "bg-[#00A651] text-white shadow-sm ring-2 ring-[#00A651]/30 font-black scale-[1.02]"
                           : "bg-white border border-[#E0F2E9] text-[#333333] hover:border-[#00A651]/50 hover:bg-[#F9FAF9]"
-                      }`}
+                        }`}
                     >
                       <Icon size={16} className={isSelected ? "text-white mb-1" : "text-[#00A651] mb-1"} />
                       <span className={`text-[10px] ${isSelected ? "font-black text-white" : "font-bold text-[#333333]"}`}>
@@ -548,8 +547,8 @@ export default function PaymentPage() {
               {isSaving
                 ? "Confirming order & sending receipt…"
                 : isProcessing
-                ? "Opening Gateway…"
-                : `Pay ₹${total} via ${paymentMethodDetails[selectedMethod].title}`}
+                  ? "Opening Gateway…"
+                  : `Pay ₹${total} via ${paymentMethodDetails[selectedMethod].title}`}
             </span>
           </Button>
 

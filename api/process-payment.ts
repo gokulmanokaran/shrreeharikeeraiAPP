@@ -681,7 +681,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
           .eq("id", activeOrderId)
           .maybeSingle();
         stockAlreadyDeducted = Boolean(orderRow?.stock_deducted);
-      } catch (_) {}
+      } catch (_) { }
 
       if (!stockAlreadyDeducted) {
         const stockResults = await deductStockForOrderItems(supabase, validatedItems, activeOrderId);
@@ -692,7 +692,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
               .from("orders")
               .update({ stock_deducted: true })
               .eq("id", activeOrderId);
-          } catch (_) {}
+          } catch (_) { }
           console.info(`[process-payment] ✅ Stock deducted for order ${activeOrderId}:`, stockResults.map(r => `${r.name}: ${r.previousStock}→${r.newStock}`));
         }
       } else {

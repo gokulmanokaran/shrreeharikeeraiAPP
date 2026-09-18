@@ -101,7 +101,7 @@ export function getWebhookUrl(): string {
   return (
     (typeof window !== "undefined"
       ? (import.meta.env.VITE_ORDER_WEBHOOK_URL as string) ||
-        (import.meta.env.VITE_GOOGLE_SHEETS_WEBHOOK_URL as string)
+      (import.meta.env.VITE_GOOGLE_SHEETS_WEBHOOK_URL as string)
       : "") ||
     "https://script.google.com/macros/s/AKfycbzjXsA4gHp4u30Qx9RhFamyOIrSjqs2yi9K5wAF1YylK8FU9Ushsex8kffAIIRUR3bI/exec"
   );
@@ -468,7 +468,7 @@ export async function submitOrderNotification(
       `[OrderService] ⚠️ Backend saved order ${finalId} but sheets/email sync was delayed. Triggering direct fallback...`
     );
     const enrichedBody = { ...requestBody, orderId: finalId };
-    submitDirectToGas(enrichedBody, webhookUrl, finalId).catch(() => {});
+    submitDirectToGas(enrichedBody, webhookUrl, finalId).catch(() => { });
     return backendResult;
   }
 
