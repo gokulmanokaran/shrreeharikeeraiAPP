@@ -363,11 +363,14 @@ export default async function handler(req: any, res?: any): Promise<any> {
     }
   } else {
     // Minimal payload from Razorpay webhook data only (browser data was lost)
-    const fallbackOrderId = await getOrGenerateSequentialOrderId(
-      supabase,
-      razorpayPaymentId,
-      storefrontOrderId
-    );
+    let fallbackOrderId: string;
+    try {
+      fallbackOrderId = await getOrGenerateSequentialOrderId(supabase, razorpayPaymentId, storefrontOrderId);
+    } catch (err) {
+      console.error('[razorpay-webhook] ❌ Failed to generate fallback sequential order ID:', err);
+      // As a last resort, build a timestamp-based temporary ID to avoid infinite duplicates
+      fallbackOrderId = `SHK-${String(Date.now()).slice(-10)}`;
+    }
     const formattedDate = new Date(
       (paymentEntity.created_at || Date.now() / 1000) * 1000
     ).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });

@@ -576,6 +576,10 @@ export async function getOrGenerateSequentialOrderId(
   paymentId?: string,
   clientOrderId?: string
 ): Promise<string> {
+  if (!supabase) {
+    console.error('[getOrGenerateSequentialOrderId] Supabase client is not initialized. Ensure SUPABASE_SERVICE_ROLE_KEY and SUPABASE_URL are set in the server environment.');
+    throw new Error('Supabase client uninitialized');
+  }
   // 1. Idempotency check by payment ID: return existing order ID if already assigned
   if (supabase && paymentId && paymentId !== "N/A") {
     try {
