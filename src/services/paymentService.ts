@@ -173,6 +173,26 @@ async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<stri
   if (typeof window === "undefined") return undefined;
 
   try {
+    // Ensure we have a canonical sequential order ID before creating the Razorpay order.
+    // If payload.orderId is empty, request one from the server endpoint /api/generate-order-id
+    let receiptOrderId = payload.orderId || "";
+    if (!receiptOrderId) {
+      try {
+        const r = await fetch("/api/generate-order-id", { method: "GET" });
+        if (r.ok) {
+          const d = await r.json();
+          if (d?.orderId) {
+            receiptOrderId = d.orderId;
+            console.info(`[PaymentService] ✅ Obtained server sequential order ID: ${receiptOrderId}`);
+          }
+        } else {
+          console.warn("[PaymentService] /api/generate-order-id returned non-ok status. Proceeding without pre-generated ID.");
+        }
+      } catch (err) {
+        console.warn("[PaymentService] Failed to fetch /api/generate-order-id; proceeding without pre-generated ID:", err);
+      }
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000);
 
@@ -181,10 +201,10 @@ async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<stri
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         amount: payload.amount,
-        receipt: payload.orderId,
+        receipt: receiptOrderId || payload.orderId,
         currency: payload.currency || "INR",
         notes: {
-          storefrontOrderId: payload.orderId,
+          storefrontOrderId: receiptOrderId || payload.orderId,
           userId: payload.userId || "",
           customerEmail: payload.customerEmail || "",
           customerPhone: payload.customerPhone || "",
@@ -197,6 +217,7 @@ async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<stri
       const data = await res.json();
       if (data.orderId) {
         console.info(`[PaymentService] ✅ Created Razorpay server order: ${data.orderId}`);
+        // Return the Razorpay order id from Razorpay (orderData.id), not our storefront id
         return data.orderId;
       }
     }
