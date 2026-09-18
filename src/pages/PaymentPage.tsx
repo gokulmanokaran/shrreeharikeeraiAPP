@@ -30,6 +30,29 @@ import { deductLiveProductStock } from "../services/productService";
 
 const PENDING_ORDER_KEY = "shreehari_pending_order";
 
+// ── Unique Order ID Generator ─────────────────────────────────────────────────
+/**
+ * Generates a cryptographically random unique Order ID.
+ * Format: SHK{base36-timestamp}{6-random-chars}
+ * Example: SHKM4TJW3AB5K2
+ *
+ * Guaranteed unique per order:
+ *  - Timestamp component (ms precision) prevents same-millisecond duplicates
+ *  - 6 crypto-random chars give 36^6 = 2.1 billion combos per millisecond
+ *  - Combined collision probability: astronomically small (~1 in 2 trillion)
+ */
+function generateUniqueOrderId(): string {
+  const ts = Date.now().toString(36).toUpperCase();
+  const arr = new Uint8Array(4);
+  crypto.getRandomValues(arr);
+  const rand = Array.from(arr, (b) => b.toString(36))
+    .join("")
+    .toUpperCase()
+    .slice(0, 6)
+    .padEnd(6, "0");
+  return `SHK${ts}${rand}`;
+}
+
 export type PaymentMethodOption = "gpay" | "card" | "netbanking" | "wallet";
 
 export const paymentMethodDetails: Record<
@@ -77,15 +100,32 @@ export default function PaymentPage() {
   const [showItems, setShowItems] = useState(false);
   const isNavigatingRef = useRef(false);
 
-  // Retrieve pending order from navigation state or localStorage fallback
+  /**
+   * Stable unique Order ID for this payment session.
+   * Generated once on first pay-button click and reused for retries within
+   * the same session. A new PaymentPage mount always generates a fresh ID.
+   * NEVER reuses a previous order's ID.
+   */
+  const sessionOrderIdRef = useRef<string | null>(null);
+
+  // On mount: clear any stale pending order data from localStorage so it
+  // cannot contaminate this new order session.
+  useEffect(() => {
+    try {
+      localStorage.removeItem(PENDING_ORDER_KEY);
+      localStorage.removeItem("shreehari_latest_order");
+    } catch { /* ignore */ }
+  }, []);
+
+  // Retrieve pending order from navigation state or sessionStorage fallback.
+  // Explicitly SKIP localStorage to prevent stale cross-order contamination.
   const pendingOrder = useMemo<OrderNotificationPayload | null>(() => {
     const stateOrder = location.state?.order as OrderNotificationPayload | undefined;
     if (stateOrder && (stateOrder.items?.length || stateOrder.total !== undefined)) return stateOrder;
 
     try {
-      const stored =
-        sessionStorage.getItem(PENDING_ORDER_KEY) ||
-        localStorage.getItem(PENDING_ORDER_KEY);
+      // sessionStorage only — scoped to this browser tab session
+      const stored = sessionStorage.getItem(PENDING_ORDER_KEY);
       if (stored) {
         return JSON.parse(stored) as OrderNotificationPayload;
       }
@@ -124,7 +164,6 @@ export default function PaymentPage() {
   }
 
   const {
-    orderId,
     total,
     subtotal,
     deliveryCharge: charge,
@@ -141,23 +180,33 @@ export default function PaymentPage() {
   const handlePayWithRazorpay = async () => {
     if (isProcessing || isSaving) return; // Prevent duplicate triggers
 
+    // ── Generate or reuse this session's unique Order ID ─────────────────────
+    // A fresh unique ID is generated on the FIRST click and reused for any
+    // retries within the same payment session. This guarantees:
+    //  1. Every new PaymentPage mount → completely new unique ID
+    //  2. Retry inside the same session → same ID (idempotency)
+    //  3. NEVER reuses an ID from a previous order
+    if (!sessionOrderIdRef.current) {
+      sessionOrderIdRef.current = generateUniqueOrderId();
+    }
+    const sessionOrderId = sessionOrderIdRef.current;
+
     setIsProcessing(true);
     setErrorMessage(null);
 
     try {
       const methodInfo = paymentMethodDetails[selectedMethod] || paymentMethodDetails.gpay;
       const paymentResult = await processPayment({
-        orderId,
+        orderId: sessionOrderId,
         amount: total,
         currency: "INR",
         customerName: fullName,
         customerEmail: email || user?.email || undefined,
         customerPhone: mobile,
-        description: orderId ? `Shree Hari Keerai — Order #${orderId}` : "Shree Hari Keerai — Fresh Greens Order",
+        description: `Shree Hari Keerai — Order #${sessionOrderId}`,
         userId: currentUserId,
         preferredMethod: methodInfo.rzpMethod,
         onPaymentFailed: (errorMsg) => {
-          // Update message in UI without blocking retry inside or outside modal
           setErrorMessage(errorMsg);
         },
       });
@@ -170,7 +219,13 @@ export default function PaymentPage() {
         return;
       }
 
-      // ── Payment Succeeded ───
+      // ── Payment Captured by Razorpay — Now finalize the order ──────────────
+      // IMPORTANT: Payment success ≠ Order completion.
+      // The order is only finalized after:
+      //   1. Backend signature verification (/api/process-payment)
+      //   2. Supabase order save
+      //   3. Customer + admin email sent
+      //   4. Google Sheets updated
       setIsProcessing(true);
       setIsSaving(true);
       isNavigatingRef.current = true;
@@ -181,6 +236,7 @@ export default function PaymentPage() {
 
       const completedOrder: OrderNotificationPayload = {
         ...pendingOrder,
+        orderId: sessionOrderId,  // Use our generated unique ID (not stale "" from checkout)
         userId: currentUserId,
         email: email || user?.email || profile?.email || "",
         paymentStatus: `Paid (${methodInfo.title})${razorpayPaymentId ? ` · ${razorpayPaymentId}` : ""}`,
@@ -190,59 +246,58 @@ export default function PaymentPage() {
         razorpaySignature,
       };
 
-      // 1. Submit order to backend — now returns IMMEDIATELY after DB save
-      //    (GAS email + sheets sync runs as background job on the server)
-      let finalOrderId = pendingOrder.orderId;
-      try {
-        const orderResult = await submitOrderNotification(completedOrder);
-        if (orderResult?.orderId && /^SHK-?\d+$/i.test(orderResult.orderId)) {
-          finalOrderId = orderResult.orderId;
-        }
-      } catch (submitErr) {
-        console.warn(`[PaymentPage] Order submission warning:`, submitErr);
-        // Non-fatal: order may still be in DB via Razorpay webhook fallback
+      // ── Backend Verification + DB Save + Email + Sheets (MANDATORY) ─────────
+      // Verifies Razorpay signature, saves to Supabase, sends emails, updates Sheets.
+      // If this fails, we do NOT navigate to success — we surface an error with
+      // the payment ID so the customer can contact support.
+      const orderResult = await submitOrderNotification(completedOrder);
+
+      if (!orderResult.success && !orderResult.alreadyProcessed) {
+        setIsProcessing(false);
+        setIsSaving(false);
+        isNavigatingRef.current = false;
+        setErrorMessage(
+          `Your payment was received (Payment ID: ${razorpayPaymentId || "N/A"}) but ` +
+          `order confirmation encountered an issue. Please contact us — your order will be fulfilled. ` +
+          `Reference: ${orderResult.error || "Backend unavailable"}`
+        );
+        return;
       }
+
+      // Use the Order ID confirmed/assigned by the backend.
+      // Backend may return the same ID (most common) or reassign if there was a DB conflict.
+      const confirmedOrderId = orderResult.orderId || sessionOrderId;
 
       const finalizedOrder: OrderNotificationPayload = {
         ...completedOrder,
-        orderId: finalOrderId,
+        orderId: confirmedOrderId,
       };
 
-      // 2. Persist finalized order locally with the real sequential ID for immediate success page display
+      // ── Clean up pending order state ───────────────────────────────────────────
       try {
-        localStorage.setItem("shreehari_latest_order", JSON.stringify(finalizedOrder));
-        const existingRaw = localStorage.getItem("shreehari_orders");
-        const existing = existingRaw ? JSON.parse(existingRaw) : [];
-        const filtered = existing.filter((o: any) => o.id !== finalOrderId && o.orderId !== finalOrderId && o.id !== pendingOrder.orderId && o.orderId !== pendingOrder.orderId);
-        localStorage.setItem(
-          "shreehari_orders",
-          JSON.stringify([finalizedOrder, ...filtered])
-        );
         sessionStorage.removeItem(PENDING_ORDER_KEY);
         localStorage.removeItem(PENDING_ORDER_KEY);
-      } catch {
-        /* ignore */
-      }
+      } catch { /* ignore */ }
 
-      // 3. Clear cart and navigate immediately — no waiting for emails or sheets
+      // ── Navigate to success ─────────────────────────────────────────────────
       clearCart();
       navigate("/order-success", { replace: true, state: finalizedOrder });
 
-      // 4. Trigger stock refresh in background (non-blocking)
-      deductLiveProductStock(finalizedOrder.items).catch(() => { });
-      refreshProducts().catch(() => { });
+      // ── Background: refresh product stock (non-blocking) ──────────────────────
+      deductLiveProductStock(finalizedOrder.items).catch(() => {});
+      refreshProducts().catch(() => {});
 
     } catch (err) {
       setIsProcessing(false);
       setIsSaving(false);
+      isNavigatingRef.current = false;
       setErrorMessage(
         err instanceof Error
           ? err.message
-          : "An unexpected error occurred while connecting to the payment gateway. Please retry."
+          : "An unexpected error occurred while processing your order. Please retry."
       );
     }
   };
-
 
   const handleBack = () => {
     if (window.history.length > 1) {

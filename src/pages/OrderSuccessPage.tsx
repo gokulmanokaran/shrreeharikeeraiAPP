@@ -50,31 +50,25 @@ export default function OrderSuccessPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Load from location.state (always has real sequential ID after our fix)
-  // OR fallback to latest saved order in localStorage
+  // Load order details exclusively from navigation state.
+  // Never read from localStorage — stale localStorage data would show a
+  // previous order's ID on the confirmation page for a new order.
   const order = useMemo(() => {
     const stateOrder = location.state as SuccessState | null;
     if (stateOrder && stateOrder.orderId) return stateOrder;
-    try {
-      const stored = localStorage.getItem("shreehari_latest_order");
-      if (stored) return JSON.parse(stored) as SuccessState;
-    } catch { /* fallback */ }
-    return {
-      orderId: "SHK00001",
-      total: 230,
-      subtotal: 200,
-      deliveryCharge: 30,
-      discount: 0,
-      discountPercentage: 0,
-      pincode: "641014",
-      items: [],
-    };
+    return null;
   }, [location.state]);
 
-  const orderId =
-    (order.orderId && /^SHK-?\d+$/i.test(order.orderId))
-      ? order.orderId
-      : "SHK00001";
+  // If no state (e.g. user navigated directly to /order-success), redirect home.
+  useEffect(() => {
+    if (!order) {
+      navigate("/", { replace: true });
+    }
+  }, [order, navigate]);
+
+  if (!order) return null;
+
+  const orderId = order.orderId || "";
   const total = order.total ?? 230;
   const subtotal = order.subtotal ?? total;
   const deliveryCharge = order.deliveryCharge ?? 30;

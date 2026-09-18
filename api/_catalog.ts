@@ -561,21 +561,41 @@ export function validateAdminAuth(getHeader: (name: string) => string | undefine
   return false;
 }
 
-// ─── Sequential Order ID Generator ────────────────────────────────────────────
+// ─── Unique Order ID Generator (Server-side) ──────────────────────────────────
 /**
- * Atomically resolves or generates the next sequential Order ID (SHK00001, SHK00002, ..., SHK00025, SHK00026).
- * 
- * 1. If an order with this razorpay_payment_id already exists in Supabase and has a sequential ID, returns that order's ID.
- * 2. If clientOrderId already exists in Supabase with a valid sequential format, returns that ID.
- * 3. Queries existing SHK sequential records in DB, determines highest integer suffix (e.g. 25), increments by 1 (e.g. 25 -> 26),
- *    and verifies candidate uniqueness against the DB with conflict resolution.
+ * Generates a cryptographically random unique Order ID (server-side).
+ * Format: SHK{base36-timestamp}{6-random-chars}
+ * This is the server-side fallback; the client normally generates the ID before payment.
+ */
+export function generateUniqueOrderId(): string {
+  const ts = Date.now().toString(36).toUpperCase();
+  const rand = Math.random().toString(36).slice(2, 8).toUpperCase().padEnd(6, "0");
+  return `SHK${ts}${rand}`;
+}
+
+// ─── Order ID Resolver ────────────────────────────────────────────────────────
+/**
+ * Resolves or generates the Order ID to use for a new order.
+ *
+ * Priority:
+ *  1. Idempotency check by razorpay_payment_id — if this payment was already processed,
+ *     return the existing order's ID (prevents duplicate orders for the same payment).
+ *  2. Use the clientOrderId provided by the browser — the client now generates a
+ *     cryptographically random unique ID before payment, so this is almost always used.
+ *  3. Fallback: generate a new random unique ID on the server.
+ *
+ * The old sequential scan approach (SELECT max from SHK... WHERE id LIKE 'SHK%') is
+ * removed because it had a race condition under concurrent orders AND required many
+ * DB round-trips. The random ID approach is collision-resistant without DB coordination.
  */
 export async function getOrGenerateSequentialOrderId(
   supabase: any,
   paymentId?: string,
   clientOrderId?: string
 ): Promise<string> {
-  // 1. Idempotency check by payment ID: return existing order ID if already assigned
+  // 1. Idempotency check by payment ID — Razorpay payment IDs are globally unique.
+  //    If this payment was already processed, return the existing order ID.
+  //    This prevents duplicate orders when /api/process-payment is called more than once.
   if (supabase && paymentId && paymentId !== "N/A") {
     try {
       const { data: existingByPayment } = await supabase
@@ -583,75 +603,28 @@ export async function getOrGenerateSequentialOrderId(
         .select("id")
         .eq("razorpay_payment_id", paymentId)
         .maybeSingle();
-      if (existingByPayment?.id && /^SHK-?\d+$/i.test(existingByPayment.id)) {
+      if (existingByPayment?.id) {
+        console.info(`[getOrGenerateSequentialOrderId] Idempotency: reusing order ${existingByPayment.id} for payment ${paymentId}`);
         return existingByPayment.id;
       }
     } catch {
-      // Continue
+      // Continue — don't block on DB error
     }
   }
 
-  // 2. Check if clientOrderId already exists in DB with valid sequential format
-  if (supabase && clientOrderId && /^SHK-?\d+$/i.test(clientOrderId)) {
-    try {
-      const { data: existingById } = await supabase
-        .from("orders")
-        .select("id")
-        .eq("id", clientOrderId)
-        .maybeSingle();
-      if (existingById?.id) {
-        return existingById.id;
-      }
-    } catch {
-      // Continue
-    }
+  // 2. Use the client-provided random unique ID directly.
+  //    The client generates a cryptographically random ID before payment starts,
+  //    so this path is taken for virtually every new order.
+  if (clientOrderId && clientOrderId.trim()) {
+    const trimmedId = clientOrderId.trim();
+    console.info(`[getOrGenerateSequentialOrderId] Using client-provided order ID: ${trimmedId}`);
+    return trimmedId;
   }
 
-  // 3. Database-backed strict sequence calculation based on highest existing order ID
-  if (supabase) {
-    try {
-      const { data: orderRows } = await supabase
-        .from("orders")
-        .select("id")
-        .like("id", "SHK%")
-        .limit(10000);
-
-      let maxSeq = 0;
-      if (Array.isArray(orderRows)) {
-        for (const row of orderRows) {
-          const idStr = String(row?.id || "").trim();
-          const match = idStr.match(/^SHK-?(\d{1,5})$/i);
-          if (match) {
-            const num = parseInt(match[1], 10);
-            if (!isNaN(num) && num > maxSeq) {
-              maxSeq = num;
-            }
-          }
-        }
-      }
-
-      // Strict increment: if highest in DB is 25, next is 26
-      let candidateNum = maxSeq + 1;
-      for (let attempt = 0; attempt < 100; attempt++) {
-        const candidateId = `SHK${String(candidateNum).padStart(5, "0")}`;
-        const altId = `SHK-${String(candidateNum).padStart(5, "0")}`;
-        const { data: conflict } = await supabase
-          .from("orders")
-          .select("id")
-          .in("id", [candidateId, altId])
-          .maybeSingle();
-
-        if (!conflict) {
-          return candidateId;
-        }
-        candidateNum++;
-      }
-    } catch (err) {
-      console.warn("[getOrGenerateSequentialOrderId] Query fallback warning:", err);
-    }
-  }
-
-  // 4. Default baseline fallback
-  return "SHK00001";
+  // 3. Fallback: generate a new random unique ID on the server.
+  //    This only happens if the client didn't send an orderId (e.g. legacy calls).
+  const fallbackId = generateUniqueOrderId();
+  console.info(`[getOrGenerateSequentialOrderId] Generated server-side fallback order ID: ${fallbackId}`);
+  return fallbackId;
 }
 

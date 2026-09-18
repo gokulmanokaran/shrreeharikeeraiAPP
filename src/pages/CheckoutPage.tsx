@@ -133,10 +133,15 @@ export default function CheckoutPage() {
 
   const isNavigatingRef = useRef(false);
 
-  // Reset placing state on mount
+  // Reset placing state on mount and clear any stale pending order data
+  // so a new checkout never inherits a previous order's ID or items.
   useEffect(() => {
     setPlacing(false);
     isNavigatingRef.current = false;
+    try {
+      sessionStorage.removeItem("shreehari_pending_order");
+      localStorage.removeItem("shreehari_pending_order");
+    } catch { /* ignore */ }
   }, []);
 
   // Redirect to cart if empty
@@ -284,10 +289,11 @@ export default function CheckoutPage() {
       paymentStatus: "Pending",
     };
 
-    // Save pending order to storage so it survives page reloads
+    // Save pending order to sessionStorage only (session-scoped, never leaks into new orders).
+    // Do NOT save to localStorage — stale localStorage data is the primary source of
+    // old Order IDs and customer details appearing in new checkouts.
     try {
       sessionStorage.setItem("shreehari_pending_order", JSON.stringify(pendingOrder));
-      localStorage.setItem("shreehari_pending_order", JSON.stringify(pendingOrder));
     } catch {
       /* ignore */
     }

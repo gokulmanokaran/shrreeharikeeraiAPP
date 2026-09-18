@@ -109,6 +109,8 @@ export function getWebhookUrl(): string {
 
 /** Check if this order was already notified (local dedup — secondary guard) */
 function isOrderAlreadyNotified(orderId: string): boolean {
+  // Never track empty or very-short IDs — they indicate a bug upstream, not a real order
+  if (!orderId || orderId.length < 5) return false;
   try {
     const raw = localStorage.getItem(SUBMITTED_ORDERS_KEY);
     if (!raw) return false;
@@ -121,6 +123,8 @@ function isOrderAlreadyNotified(orderId: string): boolean {
 
 /** Mark order as notified in localStorage */
 function markOrderNotified(orderId: string): void {
+  // Never track empty or very-short IDs
+  if (!orderId || orderId.length < 5) return;
   try {
     const raw = localStorage.getItem(SUBMITTED_ORDERS_KEY);
     const ids: string[] = raw ? JSON.parse(raw) : [];
@@ -290,8 +294,11 @@ export async function persistOrderDirectToSupabase(
   payload: OrderNotificationPayload
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!payload.orderId || !/^SHK-?\d+$/i.test(payload.orderId)) {
-      // Temporary client IDs are never persisted directly — /api/process-payment generates the authoritative sequential ID
+    // Accept any non-empty orderId that starts with our prefix.
+    // New format: SHK{base36-timestamp}{6-random-chars}  e.g. SHKM4TJW3AB5K2
+    // Old format: SHK00001, SHK-00001 (still accepted for backwards compatibility)
+    if (!payload.orderId || !payload.orderId.startsWith("SHK")) {
+      // Empty or unrecognized prefix — skip direct save, let the backend handle it
       return { success: true };
     }
 
@@ -430,31 +437,7 @@ export async function submitOrderNotification(
   if (backendResult?.success) {
     const finalId = backendResult.orderId || orderId;
     markOrderNotified(orderId);
-    markOrderNotified(finalId);
-
-    // Sync authoritative sequential order ID to local storage caches
-    try {
-      const rawLatest = localStorage.getItem("shreehari_latest_order");
-      if (rawLatest) {
-        const parsed = JSON.parse(rawLatest);
-        if (parsed.orderId === orderId || !/^SHK-?\d+$/i.test(parsed.orderId)) {
-          parsed.orderId = finalId;
-          localStorage.setItem("shreehari_latest_order", JSON.stringify(parsed));
-        }
-      }
-      const rawOrders = localStorage.getItem("shreehari_orders");
-      if (rawOrders) {
-        const parsedList = JSON.parse(rawOrders);
-        if (Array.isArray(parsedList)) {
-          const updated = parsedList.map((o: any) =>
-            o.orderId === orderId || o.id === orderId ? { ...o, id: finalId, orderId: finalId } : o
-          );
-          localStorage.setItem("shreehari_orders", JSON.stringify(updated));
-        }
-      }
-    } catch {
-      /* ignore */
-    }
+    if (finalId !== orderId) markOrderNotified(finalId);
 
     if (backendResult.sheetsSynced) {
       console.info(

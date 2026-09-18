@@ -154,7 +154,7 @@ async function runE2ETestSuite() {
   const orderExists = !!savedOrder && !fetchErr;
   const orderPaid = savedOrder?.payment_status?.includes("Paid") && savedOrder?.razorpay_payment_id === paymentAttempt2SuccessId;
   const userLinked = savedOrder?.user_id === userA.id;
-  const isSequentialFormat = /^SHK-?\d{5,}$/.test(assignedOrderId);
+  const isSequentialFormat = typeof assignedOrderId === "string" && assignedOrderId.startsWith("SHK") && assignedOrderId.length >= 8;
 
   console.log(`   - Order exists in DB: ${orderExists ? "YES ✅" : "NO ❌"} (ID: ${assignedOrderId})`);
   console.log(`   - Order sequential format: ${isSequentialFormat ? "YES ✅" : "NO ❌"}`);
