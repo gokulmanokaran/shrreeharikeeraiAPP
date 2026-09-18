@@ -14,6 +14,7 @@ import {
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/Button";
 import { useEffect, useMemo } from "react";
+// ok
 
 interface SuccessState {
   orderId?: string;
