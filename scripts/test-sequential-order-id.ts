@@ -59,8 +59,8 @@ async function runSequentialIdTests() {
     console.log("1. Testing getOrGenerateSequentialOrderId directly...");
     const seq1 = await getOrGenerateSequentialOrderId(adminClient);
     console.log("   Candidate Sequence ID 1:", seq1);
-    if (!/^SHK\d{5,}$/.test(seq1)) {
-      throw new Error(`Invalid sequential format: ${seq1}. Expected SHK00001 format.`);
+    if (!/^SHK-?\d{5,}$/.test(seq1)) {
+      throw new Error(`Invalid sequential format: ${seq1}. Expected SHK-00001 (or SHK00001) format.`);
     }
 
     // 2. Testing Sequential Order Placement via /api/process-payment

@@ -568,8 +568,9 @@ export async function getOrGenerateSequentialOrderId(
       // Strict increment: if highest in DB is 25, next is 26
       let candidateNum = maxSeq + 1;
       for (let attempt = 0; attempt < 100; attempt++) {
-        const candidateId = `SHK${String(candidateNum).padStart(5, "0")}`;
-        const altId = `SHK-${String(candidateNum).padStart(5, "0")}`;
+        // Canonical ID format used by DB functions and SQL migration: SHK-00001
+        const candidateId = `SHK-${String(candidateNum).padStart(5, "0")}`;
+        const altId = `SHK${String(candidateNum).padStart(5, "0")}`;
         const { data: conflict } = await supabase
           .from("orders")
           .select("id")
@@ -586,8 +587,8 @@ export async function getOrGenerateSequentialOrderId(
     }
   }
 
-  // 4. Default baseline fallback
-  return "SHK00001";
+  // 4. Default baseline fallback (include dash to match DB function)
+  return "SHK-00001";
 }
 
 
