@@ -59,7 +59,7 @@ export default function OrderSuccessPage() {
       if (stored) return JSON.parse(stored) as SuccessState;
     } catch { /* fallback */ }
     return {
-      orderId: "SHK00001",
+      orderId: "SHK-00001",
       total: 230,
       subtotal: 200,
       deliveryCharge: 30,

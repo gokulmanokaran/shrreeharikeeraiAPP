@@ -107,13 +107,21 @@ export function getWebhookUrl(): string {
   );
 }
 
+/** Keep local dedup logic limited to real order IDs and ignore stale/blank values. */
+function isValidSequentialOrderId(orderId: string): boolean {
+  return Boolean(orderId && /^SHK-?\d+$/i.test(orderId));
+}
+
 /** Check if this order was already notified (local dedup — secondary guard) */
 function isOrderAlreadyNotified(orderId: string): boolean {
+  const normalized = String(orderId || "").trim();
+  if (!isValidSequentialOrderId(normalized)) return false;
+
   try {
     const raw = localStorage.getItem(SUBMITTED_ORDERS_KEY);
     if (!raw) return false;
     const ids: string[] = JSON.parse(raw);
-    return ids.includes(orderId);
+    return ids.includes(normalized);
   } catch {
     return false;
   }
@@ -121,11 +129,14 @@ function isOrderAlreadyNotified(orderId: string): boolean {
 
 /** Mark order as notified in localStorage */
 function markOrderNotified(orderId: string): void {
+  const normalized = String(orderId || "").trim();
+  if (!isValidSequentialOrderId(normalized)) return;
+
   try {
     const raw = localStorage.getItem(SUBMITTED_ORDERS_KEY);
     const ids: string[] = raw ? JSON.parse(raw) : [];
-    if (!ids.includes(orderId)) {
-      ids.push(orderId);
+    if (!ids.includes(normalized)) {
+      ids.push(normalized);
       localStorage.setItem(SUBMITTED_ORDERS_KEY, JSON.stringify(ids.slice(-100)));
     }
   } catch {

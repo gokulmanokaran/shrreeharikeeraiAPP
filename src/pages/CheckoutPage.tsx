@@ -40,6 +40,18 @@ const sectionVariants = {
 };
 
 const GUEST_STORAGE_KEY = "shreehari_guest_details";
+const TRANSIENT_ORDER_KEYS = ["shreehari_pending_order", "shreehari_latest_order", "shreehari_submitted_order_ids"];
+
+function clearTransientOrderState() {
+  for (const key of TRANSIENT_ORDER_KEYS) {
+    try {
+      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  }
+}
 
 function loadSavedGuest() {
   try {
@@ -227,6 +239,9 @@ export default function CheckoutPage() {
     } catch {
       /* ignore */
     }
+
+    // Always reset any stale checkout/payment state before creating a fresh order.
+    clearTransientOrderState();
 
     isNavigatingRef.current = true;
     setPlacing(true);

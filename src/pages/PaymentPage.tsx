@@ -77,7 +77,9 @@ export default function PaymentPage() {
   const [showItems, setShowItems] = useState(false);
   const isNavigatingRef = useRef(false);
 
-  // Retrieve pending order from navigation state or localStorage fallback
+  // Retrieve pending order from navigation state or localStorage fallback.
+  // Ignore stale persisted checkout state from a previous order so the second checkout
+  // cannot accidentally resume with the first order's orderId.
   const pendingOrder = useMemo<OrderNotificationPayload | null>(() => {
     const stateOrder = location.state?.order as OrderNotificationPayload | undefined;
     if (stateOrder && (stateOrder.items?.length || stateOrder.total !== undefined)) return stateOrder;
@@ -87,7 +89,15 @@ export default function PaymentPage() {
         sessionStorage.getItem(PENDING_ORDER_KEY) ||
         localStorage.getItem(PENDING_ORDER_KEY);
       if (stored) {
-        return JSON.parse(stored) as OrderNotificationPayload;
+        const parsed = JSON.parse(stored) as OrderNotificationPayload;
+        const createdAt = parsed?.createdAt ? new Date(parsed.createdAt).getTime() : 0;
+        const isRecent = Number.isFinite(createdAt) && Date.now() - createdAt < 30 * 60 * 1000;
+        if (!isRecent) {
+          sessionStorage.removeItem(PENDING_ORDER_KEY);
+          localStorage.removeItem(PENDING_ORDER_KEY);
+          return null;
+        }
+        return parsed;
       }
     } catch {
       /* ignore */

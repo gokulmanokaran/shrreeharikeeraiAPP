@@ -612,11 +612,13 @@ export default async function handler(req: any, res?: any): Promise<any> {
 
   // ── 3. Resolve / Generate Sequential Order ID (Database-side) ─────────────
   const supabase = getSupabaseServerClient();
-  const sequentialOrderId = await getOrGenerateSequentialOrderId(
-    supabase,
-    paymentId,
-    data.orderId
-  );
+  let sequentialOrderId: string;
+  try {
+    sequentialOrderId = await getOrGenerateSequentialOrderId(supabase, paymentId, data.orderId);
+  } catch (err) {
+    console.error('[process-payment] ❌ Failed to generate sequential order ID:', err);
+    return sendApiResponse(res, 500, { success: false, error: 'Server misconfiguration: Supabase unavailable. Please contact admin.' });
+  }
 
   console.info(
     `[process-payment] 📦 Processing Sequential Order: ${sequentialOrderId} | Payment: ${paymentId || "N/A"} | Amount: ₹${computedTotal}`

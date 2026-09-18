@@ -563,7 +563,8 @@ export function validateAdminAuth(getHeader: (name: string) => string | undefine
 
 // ─── Sequential Order ID Generator ────────────────────────────────────────────
 /**
- * Atomically resolves or generates the next sequential Order ID (SHK00001, SHK00002, ..., SHK00025, SHK00026).
+ * Atomically resolves or generates the next sequential Order ID (SHK-00001, SHK-00002, ..., SHK-00025, SHK-00026).
+ * Uses the canonical dashed format (SHK-xxxxx) to match the Supabase SQL sequencing function.
  * 
  * 1. If an order with this razorpay_payment_id already exists in Supabase and has a sequential ID, returns that order's ID.
  * 2. If clientOrderId already exists in Supabase with a valid sequential format, returns that ID.
@@ -575,6 +576,10 @@ export async function getOrGenerateSequentialOrderId(
   paymentId?: string,
   clientOrderId?: string
 ): Promise<string> {
+  if (!supabase) {
+    console.error('[getOrGenerateSequentialOrderId] Supabase client is not initialized. Ensure SUPABASE_SERVICE_ROLE_KEY and SUPABASE_URL are set in the server environment.');
+    throw new Error('Supabase client uninitialized');
+  }
   // 1. Idempotency check by payment ID: return existing order ID if already assigned
   if (supabase && paymentId && paymentId !== "N/A") {
     try {
@@ -633,8 +638,9 @@ export async function getOrGenerateSequentialOrderId(
       // Strict increment: if highest in DB is 25, next is 26
       let candidateNum = maxSeq + 1;
       for (let attempt = 0; attempt < 100; attempt++) {
-        const candidateId = `SHK${String(candidateNum).padStart(5, "0")}`;
-        const altId = `SHK-${String(candidateNum).padStart(5, "0")}`;
+        // Canonical ID format used by DB functions and SQL migration: SHK-00001
+        const candidateId = `SHK-${String(candidateNum).padStart(5, "0")}`;
+        const altId = `SHK${String(candidateNum).padStart(5, "0")}`;
         const { data: conflict } = await supabase
           .from("orders")
           .select("id")
@@ -651,7 +657,7 @@ export async function getOrGenerateSequentialOrderId(
     }
   }
 
-  // 4. Default baseline fallback
-  return "SHK00001";
+  // 4. Default baseline fallback (include dash to match DB function)
+  return "SHK-00001";
 }
 
