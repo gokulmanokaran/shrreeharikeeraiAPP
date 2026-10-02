@@ -434,6 +434,18 @@ export async function registerCustomer(input: {
     if (/rate limit/i.test(error.message)) {
       return { error: "Too many requests. Please wait a few minutes before trying again." };
     }
+    // Supabase 500: SMTP / email delivery failure
+    if (
+      /sending confirmation email/i.test(error.message) ||
+      /unexpected_failure/i.test(error.message) ||
+      (error as any).code === 500 ||
+      (error as any).status === 500
+    ) {
+      return {
+        error:
+          "We could not send the verification email right now. Please try again in a few minutes, or contact support if this keeps happening.",
+      };
+    }
     return { error: error.message };
   }
 
@@ -574,6 +586,19 @@ export async function resendEmailOtp(
       return {
         success: false,
         error: "Please wait at least 60 seconds before requesting another code.",
+      };
+    }
+    // Supabase 500: SMTP / email delivery failure
+    if (
+      /sending confirmation email/i.test(error.message) ||
+      /unexpected_failure/i.test(error.message) ||
+      (error as any).code === 500 ||
+      (error as any).status === 500
+    ) {
+      return {
+        success: false,
+        error:
+          "We could not send the verification email right now. Please try again in a few minutes.",
       };
     }
     return { success: false, error: error.message };
