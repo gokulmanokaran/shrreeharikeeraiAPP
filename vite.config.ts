@@ -155,6 +155,52 @@ function localDevApiPlugin(): Plugin {
           return;
         }
 
+        // POST /api/auth/send-otp  (local dev)
+        if (url.startsWith("/api/auth/send-otp") && (req.method === "POST" || req.method === "OPTIONS")) {
+          if (req.method === "OPTIONS") { res.statusCode = 200; res.end(); return; }
+          let rawBody = "";
+          req.on("data", (chunk: any) => { rawBody += chunk; });
+          req.on("end", async () => {
+            try {
+              const body = JSON.parse(rawBody || "{}");
+              const handlerUrl = pathToFileURL(path.resolve(__dirname, "api/auth/send-otp.ts")).href;
+              const mod = await import(handlerUrl) as { default: (req: any, res: any) => Promise<void> };
+              const adaptedReq = Object.assign(req, { body });
+              const r: any = res;
+              if (!r.status) r.status = function(s: number) { this.statusCode = s; return this; };
+              if (!r.json) r.json = function(obj: any) { this.setHeader("Content-Type","application/json"); this.end(JSON.stringify(obj)); return this; };
+              await mod.default(adaptedReq, r);
+            } catch (err: any) {
+              console.error("[DevAPI send-otp]:", err);
+              if (!res.headersSent) { res.statusCode = 500; res.setHeader("Content-Type","application/json"); res.end(JSON.stringify({ error: err?.message || "Internal error" })); }
+            }
+          });
+          return;
+        }
+
+        // POST /api/auth/verify-otp  (local dev)
+        if (url.startsWith("/api/auth/verify-otp") && (req.method === "POST" || req.method === "OPTIONS")) {
+          if (req.method === "OPTIONS") { res.statusCode = 200; res.end(); return; }
+          let rawBody = "";
+          req.on("data", (chunk: any) => { rawBody += chunk; });
+          req.on("end", async () => {
+            try {
+              const body = JSON.parse(rawBody || "{}");
+              const handlerUrl = pathToFileURL(path.resolve(__dirname, "api/auth/verify-otp.ts")).href;
+              const mod = await import(handlerUrl) as { default: (req: any, res: any) => Promise<void> };
+              const adaptedReq = Object.assign(req, { body });
+              const r: any = res;
+              if (!r.status) r.status = function(s: number) { this.statusCode = s; return this; };
+              if (!r.json) r.json = function(obj: any) { this.setHeader("Content-Type","application/json"); this.end(JSON.stringify(obj)); return this; };
+              await mod.default(adaptedReq, r);
+            } catch (err: any) {
+              console.error("[DevAPI verify-otp]:", err);
+              if (!res.headersSent) { res.statusCode = 500; res.setHeader("Content-Type","application/json"); res.end(JSON.stringify({ error: err?.message || "Internal error" })); }
+            }
+          });
+          return;
+        }
+
 
         // GET /api/products
         if (url.startsWith("/api/products") && req.method === "GET") {
