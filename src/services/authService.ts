@@ -334,11 +334,16 @@ export async function loginCustomer(input: {
       /confirm/i.test(error.message) ||
       /not confirmed/i.test(error.message)
     ) {
-      // Trigger a fresh OTP email resend in the background
+      // Trigger a fresh OTP email resend via custom endpoint (Resend API)
       try {
-        await supabase.auth.resend({ type: "signup", email });
+        const apiUrl = typeof window !== "undefined" ? "/api/auth/send-otp" : "http://localhost:5173/api/auth/send-otp";
+        await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, resend: true }),
+        });
       } catch {
-        /* rate limit is handled gracefully in the UI */
+        /* rate limit / network errors handled gracefully in the UI */
       }
       return {
         needsEmailVerification: true,
@@ -362,7 +367,7 @@ export async function loginCustomer(input: {
 
 /**
  * Register a new user with Full Name, Email, Password, and Confirm Password.
- * Supabase sends a 6-digit OTP to the user's email for verification.
+ * Uses custom /api/auth/send-otp endpoint (Resend) instead of Supabase SMTP.
  */
 export async function registerCustomer(input: {
   fullName: string;
@@ -382,105 +387,37 @@ export async function registerCustomer(input: {
   const email = input.email.trim().toLowerCase();
   const fullName = input.fullName.trim();
 
-  // 1. Server-side pre-check for existing account (secure, credentials not exposed)
   try {
-    const checkUrl =
+    const apiUrl =
       typeof window !== "undefined"
-        ? "/api/auth/check-email"
-        : "http://localhost:5173/api/auth/check-email";
+        ? "/api/auth/send-otp"
+        : "http://localhost:5173/api/auth/send-otp";
 
-    const checkRes = await fetch(checkUrl, {
+    const res = await fetch(apiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, password: input.password, fullName }),
     });
-    if (checkRes.ok) {
-      const checkData = await checkRes.json();
-      if (checkData.exists && checkData.isVerified) {
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      if (data.emailAlreadyExists) {
         return {
-          error: "An account already exists with this email address. Please log in instead.",
+          error: data.error || "An account already exists with this email address. Please log in instead.",
           emailAlreadyExists: true,
         };
       }
+      return { error: data.error || "Could not create account. Please try again." };
     }
-  } catch {
-    /* If /api/auth/check-email is unreachable, proceed to Supabase signUp verification */
-  }
 
-  const supabase = getSupabaseClient();
-  if (!supabase) return { error: "Authentication service is unavailable." };
-
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password: input.password,
-    options: {
-      data: {
-        full_name: fullName,
-      },
-    },
-  });
-
-  if (error) {
-    if (
-      /already/i.test(error.message) ||
-      /user.*already/i.test(error.message) ||
-      (error as any).status === 422
-    ) {
-      return {
-        error: "An account already exists with this email address. Please log in instead.",
-        emailAlreadyExists: true,
-      };
-    }
-    if (/rate limit/i.test(error.message)) {
-      return { error: "Too many requests. Please wait a few minutes before trying again." };
-    }
-    // Supabase 500: SMTP / email delivery failure
-    if (
-      /sending confirmation email/i.test(error.message) ||
-      /unexpected_failure/i.test(error.message) ||
-      (error as any).code === 500 ||
-      (error as any).status === 500
-    ) {
-      return {
-        error:
-          "We could not send the verification email right now. Please try again in a few minutes, or contact support if this keeps happening.",
-      };
-    }
-    return { error: error.message };
-  }
-
-  // 2. Supabase duplicate account detection (when Prevent User Enumeration is enabled)
-  // When an email is already registered, Supabase returns identities: []
-  if (data.user && (data.user.identities?.length ?? 1) === 0) {
-    return {
-      error: "An account already exists with this email address. Please log in instead.",
-      emailAlreadyExists: true,
-    };
-  }
-
-  // 3. Genuinely new user created — email confirmation required (session is null)
-  if (data.user && !data.session) {
     return {
       needsEmailVerification: true,
       unconfirmedEmail: email,
-      user: data.user,
     };
+  } catch (e: any) {
+    return { error: e?.message || "Network error. Please check your connection and try again." };
   }
-
-  // 4. Email confirmations disabled on this project — user is signed in immediately
-  if (data.user && data.session) {
-    await upsertProfile({
-      id: data.user.id,
-      fullName,
-      email,
-    });
-    return { user: data.user };
-  }
-
-  return {
-    needsEmailVerification: true,
-    unconfirmedEmail: email,
-  };
 }
 
 export interface VerifyEmailOtpResult {
@@ -491,7 +428,8 @@ export interface VerifyEmailOtpResult {
 }
 
 /**
- * Verify Supabase email OTP code.
+ * Verify email OTP via custom /api/auth/verify-otp endpoint.
+ * After verification, auto-logs in using magic link token.
  */
 export async function verifyEmailOtp(
   email: string,
@@ -505,61 +443,58 @@ export async function verifyEmailOtp(
     return { success: false, error: "Please enter the complete verification code." };
   }
 
-  const supabase = getSupabaseClient();
-  if (!supabase) return { success: false, error: "Authentication service is unavailable." };
-
   const cleanEmail = email.trim().toLowerCase();
 
-  let { data, error } = await supabase.auth.verifyOtp({
-    email: cleanEmail,
-    token: trimmedToken,
-    type: "signup",
-  });
+  try {
+    const apiUrl =
+      typeof window !== "undefined"
+        ? "/api/auth/verify-otp"
+        : "http://localhost:5173/api/auth/verify-otp";
 
-  if (error && (/invalid/i.test(error.message) || /expired/i.test(error.message))) {
-    // Attempt fallback with type: "email"
-    const retry = await supabase.auth.verifyOtp({
-      email: cleanEmail,
-      token: trimmedToken,
-      type: "email",
+    const res = await fetch(apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: cleanEmail, otp: trimmedToken }),
     });
-    if (!retry.error && retry.data?.user) {
-      data = retry.data;
-      error = null;
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      const msg = data.error || "Incorrect or expired verification code.";
+      return { success: false, error: msg };
     }
-  }
 
-  if (error) {
-    if (
-      /expired/i.test(error.message) ||
-      /invalid/i.test(error.message) ||
-      /token/i.test(error.message) ||
-      (error as any).code === "otp_expired"
-    ) {
-      return {
-        success: false,
-        error: "Incorrect or expired verification code. Please check your email or click Resend Code.",
-      };
+    // Auto-login via magic link token if backend provided one
+    const supabase = getSupabaseClient();
+    if (supabase && data.tokenHash) {
+      try {
+        const { data: sessionData } = await supabase.auth.verifyOtp({
+          token_hash: data.tokenHash,
+          type: "email",
+        });
+        if (sessionData?.user) {
+          const fullName = String(sessionData.user.user_metadata?.full_name || "");
+          const profile: CustomerProfile = {
+            id: sessionData.user.id,
+            fullName,
+            email: cleanEmail,
+          };
+          await upsertProfile(profile);
+          return { success: true, user: sessionData.user, profile };
+        }
+      } catch {
+        /* fallback: verification succeeded, user can login manually */
+      }
     }
-    return { success: false, error: error.message };
-  }
 
-  if (data?.user) {
-    const fullName = String(data.user.user_metadata?.full_name || "");
-    const profile: CustomerProfile = {
-      id: data.user.id,
-      fullName,
-      email: cleanEmail,
-    };
-    await upsertProfile(profile);
-    return { success: true, user: data.user, profile };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e?.message || "Network error. Please try again." };
   }
-
-  return { success: true };
 }
 
 /**
- * Resend Supabase email OTP with rate-limiting handling.
+ * Resend email OTP via custom /api/auth/send-otp endpoint (Resend API).
  */
 export async function resendEmailOtp(
   email: string
@@ -567,44 +502,30 @@ export async function resendEmailOtp(
   const emailErr = validateRequiredEmail(email);
   if (emailErr) return { success: false, error: emailErr };
 
-  const supabase = getSupabaseClient();
-  if (!supabase) return { success: false, error: "Authentication service is unavailable." };
-
   const cleanEmail = email.trim().toLowerCase();
 
-  const { error } = await supabase.auth.resend({
-    type: "signup",
-    email: cleanEmail,
-  });
+  try {
+    const apiUrl =
+      typeof window !== "undefined"
+        ? "/api/auth/send-otp"
+        : "http://localhost:5173/api/auth/send-otp";
 
-  if (error) {
-    const isRateLimit =
-      (error as any).code === "over_email_send_rate_limit" ||
-      /security/i.test(error.message) ||
-      /rate limit/i.test(error.message);
-    if (isRateLimit) {
-      return {
-        success: false,
-        error: "Please wait at least 60 seconds before requesting another code.",
-      };
+    const res = await fetch(apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: cleanEmail, resend: true }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return { success: false, error: data.error || "Could not resend verification code. Please try again." };
     }
-    // Supabase 500: SMTP / email delivery failure
-    if (
-      /sending confirmation email/i.test(error.message) ||
-      /unexpected_failure/i.test(error.message) ||
-      (error as any).code === 500 ||
-      (error as any).status === 500
-    ) {
-      return {
-        success: false,
-        error:
-          "We could not send the verification email right now. Please try again in a few minutes.",
-      };
-    }
-    return { success: false, error: error.message };
+
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e?.message || "Network error. Please try again." };
   }
-
-  return { success: true };
 }
 
 export function getResetPasswordRedirectUrl(): string {
