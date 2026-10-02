@@ -10,7 +10,7 @@
     "api/process-payment.ts": { "maxDuration": 30 },
     "api/order-webhook.ts": { "maxDuration": 30 },
     "api/razorpay-webhook.ts": { "maxDuration": 30 },
-    "api/auth/send-otp.ts": { "maxDuration": 15 },
-    "api/auth/forgot-password.ts": { "maxDuration": 15 }
+    "api/auth/send-otp.ts": { "maxDuration": 30 },
+    "api/auth/forgot-password.ts": { "maxDuration": 30 }
   }
 }
