@@ -192,14 +192,15 @@ function areCategoriesEqual(a: Category[], b: Category[]): boolean {
     window.addEventListener("focus", handleVisibilityOrFocus);
     document.addEventListener("visibilitychange", handleVisibilityOrFocus);
 
+    // Infrequent 5-minute heartbeat fallback if websocket is temporarily interrupted
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") {
         const elapsed = Date.now() - lastSyncTimeRef.current;
-        if (elapsed > 60000) {
+        if (elapsed > 300000) {
           syncCatalog(false);
         }
       }
-    }, 60000);
+    }, 300000);
 
     return () => {
       window.removeEventListener("focus", handleVisibilityOrFocus);

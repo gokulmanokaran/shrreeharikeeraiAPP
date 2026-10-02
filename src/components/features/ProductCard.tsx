@@ -55,14 +55,13 @@ export const ProductCard = memo(function ProductCard({ product, index = 0 }: Pro
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 28 }}
+      initial={{ opacity: 0, y: 16 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-40px" }}
+      viewport={{ once: true, margin: "20px" }}
       transition={{
-        delay: (index % 4) * 0.07,
-        type: "spring",
-        stiffness: 280,
-        damping: 26,
+        delay: Math.min((index % 4) * 0.05, 0.15),
+        duration: 0.22,
+        ease: "easeOut",
       }}
       whileTap={{ scale: 0.98 }}
       onClick={() => navigate(`/products/${product.id}`)}

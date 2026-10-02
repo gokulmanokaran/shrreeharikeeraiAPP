@@ -28,10 +28,10 @@ export default function LoginPage() {
 
   useEffect(() => {
     const sEmail = (location.state as { email?: string } | null)?.email;
-    if (sEmail) {
+    if (sEmail && sEmail !== email) {
       setEmail(sEmail);
     }
-  }, [location.state]);
+  }, [location.state, email]);
 
   // Check URL params / hash for OAuth error on return from Google
   useEffect(() => {

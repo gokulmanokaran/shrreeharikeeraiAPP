@@ -14,14 +14,12 @@ import {
   Phone,
   RefreshCw,
   ShoppingBag,
-  Home,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useCart } from "../store/CartContext";
-import { useDelivery } from "../store/DeliveryContext";
 import { useProductCatalog } from "../store/ProductContext";
 import { useAuth } from "../store/AuthContext";
 import { Button } from "../components/ui/Button";
@@ -92,7 +90,6 @@ export default function PaymentPage() {
   const location = useLocation();
   const { user, profile } = useAuth();
   const { items, clearCart } = useCart();
-  const { deliveryCharge } = useDelivery();
   const { refreshProducts } = useProductCatalog();
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethodOption>("gpay");
@@ -218,7 +215,6 @@ export default function PaymentPage() {
     total,
     subtotal,
     deliveryCharge: charge,
-    discount,
     fullName,
     mobile,
     email,

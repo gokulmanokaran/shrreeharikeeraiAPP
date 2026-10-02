@@ -12,17 +12,19 @@ export default function EditProfilePage() {
   const { profile, user, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [mobile, setMobile] = useState("");
+  const [fullName, setFullName] = useState(() => profile?.fullName || String(user?.user_metadata?.full_name || ""));
+  const [email, setEmail] = useState(() => profile?.email || user?.email || "");
+  const [mobile, setMobile] = useState(() => profile?.mobile || String(user?.user_metadata?.mobile || ""));
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setFullName(profile?.fullName || String(user?.user_metadata?.full_name || ""));
-    setEmail(profile?.email || user?.email || "");
-    setMobile(profile?.mobile || String(user?.user_metadata?.mobile || ""));
+    if (profile || user) {
+      setFullName((prev) => prev || profile?.fullName || String(user?.user_metadata?.full_name || ""));
+      setEmail((prev) => prev || profile?.email || user?.email || "");
+      setMobile((prev) => prev || profile?.mobile || String(user?.user_metadata?.mobile || ""));
+    }
   }, [profile, user]);
 
   const handleSubmit = async (e: FormEvent) => {

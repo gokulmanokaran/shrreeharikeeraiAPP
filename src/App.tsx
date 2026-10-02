@@ -49,7 +49,6 @@ if (typeof window !== "undefined") {
 
 import { TopSnackbar } from "./components/ui/TopSnackbar";
 import { FloatingCartButton } from "./components/features/FloatingCartButton";
-import { WeekendDeliveryBanner } from "./components/features/WeekendDeliveryBanner";
 import { retryPendingOrderNotifications } from "./services/orderService";
 
 function PageFallback() {
@@ -103,11 +102,6 @@ function GuestOnly({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-function PincodeGuard({ children }: { children: ReactNode }) {
-  return <>{children}</>;
-}
-
-
 export default function App() {
   const location = useLocation();
 
@@ -120,9 +114,6 @@ export default function App() {
 
       {/* Global Floating Cart Button at bottom-right */}
       <FloatingCartButton />
-
-      {/* Informational Weekend Delivery Schedule Banner */}
-      <WeekendDeliveryBanner />
 
       <AnimatePresence mode="wait">
         <motion.div
@@ -169,55 +160,18 @@ export default function App() {
               <Route path="/reset-password" element={<ResetPasswordPage />} />
 
               {/* Guest-browsable Store Routes */}
-              <Route
-                path="/"
-                element={
-                  <PincodeGuard>
-                    <HomePage />
-                  </PincodeGuard>
-                }
-              />
-              <Route
-                path="/products"
-                element={
-                  <PincodeGuard>
-                    <ProductsPage />
-                  </PincodeGuard>
-                }
-              />
-              <Route
-                path="/products/:id"
-                element={
-                  <PincodeGuard>
-                    <ProductDetailsPage />
-                  </PincodeGuard>
-                }
-              />
-              <Route
-                path="/cart"
-                element={
-                  <PincodeGuard>
-                    <CartPage />
-                  </PincodeGuard>
-                }
-              />
-              <Route
-                path="/search"
-                element={
-                  <PincodeGuard>
-                    <SearchPage />
-                  </PincodeGuard>
-                }
-              />
+              <Route path="/" element={<HomePage />} />
+              <Route path="/products" element={<ProductsPage />} />
+              <Route path="/products/:id" element={<ProductDetailsPage />} />
+              <Route path="/cart" element={<CartPage />} />
+              <Route path="/search" element={<SearchPage />} />
 
               {/* Login-Required Store & Account Routes */}
               <Route
                 path="/checkout"
                 element={
                   <RequireAuth>
-                    <PincodeGuard>
-                      <CheckoutPage />
-                    </PincodeGuard>
+                    <CheckoutPage />
                   </RequireAuth>
                 }
               />
@@ -225,9 +179,7 @@ export default function App() {
                 path="/payment"
                 element={
                   <RequireAuth>
-                    <PincodeGuard>
-                      <PaymentPage />
-                    </PincodeGuard>
+                    <PaymentPage />
                   </RequireAuth>
                 }
               />
@@ -235,9 +187,7 @@ export default function App() {
                 path="/order-success"
                 element={
                   <RequireAuth>
-                    <PincodeGuard>
-                      <OrderSuccessPage />
-                    </PincodeGuard>
+                    <OrderSuccessPage />
                   </RequireAuth>
                 }
               />

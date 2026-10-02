@@ -334,7 +334,7 @@ export function MapLocationPicker({
   // ── Delivery Pincode Validation ───────────────────────────────────────────
   const detectedPincode = parsed?.pincode || "";
   const isDeliverable = Boolean(detectedPincode && isValidPincode(detectedPincode));
-  const deliveryZone = isDeliverable ? getDeliveryZone(detectedPincode) : null;
+  const _deliveryZone = isDeliverable ? getDeliveryZone(detectedPincode) : null;
   const hasLocation = Boolean(selectedLatLng);
 
   // ── Confirm handler ───────────────────────────────────────────────────────

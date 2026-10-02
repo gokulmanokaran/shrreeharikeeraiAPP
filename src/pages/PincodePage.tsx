@@ -16,7 +16,7 @@ export default function PincodePage() {
   const [pincode, setPincode] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [charge, setCharge] = useState<number | null>(null);
+  const [_charge, setCharge] = useState<number | null>(null);
   const [minOrder, setMinOrder] = useState<number | null>(null);
 
   const handleCheck = async () => {
