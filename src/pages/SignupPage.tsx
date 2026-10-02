@@ -81,6 +81,13 @@ export default function SignupPage() {
     }
   }, [user, initializing, targetPath, navigate]);
 
+  // Pre-warm auth serverless container in background while user types
+  useEffect(() => {
+    try {
+      fetch("/api/auth/send-otp", { method: "OPTIONS" }).catch(() => {});
+    } catch {}
+  }, []);
+
   const handleEmailSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setEmailAlreadyExists(false);

@@ -78,6 +78,13 @@ export default function LoginPage() {
     }
   }, [user, initializing, targetPath, navigate]);
 
+  // Pre-warm auth endpoint so login is instant
+  useEffect(() => {
+    try {
+      fetch("/api/auth/send-otp", { method: "OPTIONS" }).catch(() => {});
+    } catch {}
+  }, []);
+
   const handleEmailLogin = async (e: FormEvent) => {
     e.preventDefault();
     const emailErr = validateRequiredEmail(email);

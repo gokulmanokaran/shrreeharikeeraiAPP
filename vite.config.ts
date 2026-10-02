@@ -339,7 +339,7 @@ function localDevApiPlugin(): Plugin {
           req.on("end", async () => {
             try {
               const body = JSON.parse(rawBody || "{}");
-              const { email, otp } = body;
+              const { email, otp, userId } = body;
               if (!email || !otp) {
                 res.statusCode = 400;
                 res.setHeader("Content-Type", "application/json");
@@ -362,8 +362,18 @@ function localDevApiPlugin(): Plugin {
               const cleanEmail = String(email).trim().toLowerCase();
               const cleanOtp = String(otp).trim();
 
-              const { data: listData } = await serverClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
-              const user = (listData?.users || []).find((u: any) => u.email?.toLowerCase() === cleanEmail);
+              let user: any = null;
+              if (userId) {
+                const { data: userData } = await serverClient.auth.admin.getUserById(userId);
+                if (userData?.user && userData.user.email?.toLowerCase() === cleanEmail) {
+                  user = userData.user;
+                }
+              }
+
+              if (!user) {
+                const { data: listData } = await serverClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
+                user = (listData?.users || []).find((u: any) => u.email?.toLowerCase() === cleanEmail);
+              }
 
               if (!user) {
                 res.statusCode = 404;
@@ -401,30 +411,21 @@ function localDevApiPlugin(): Plugin {
                 user_metadata: { ...user.user_metadata, pending_otp: null, otp_expiry: null },
               });
 
-              try {
-                await serverClient.from("profiles").upsert(
+              const [, linkResult] = await Promise.all([
+                serverClient.from("profiles").upsert(
                   { id: user.id, full_name: user.user_metadata?.full_name || "", email: cleanEmail, mobile: "" },
                   { onConflict: "id" }
-                );
-              } catch {}
-
-              try {
-                const { data: linkData } = await serverClient.auth.admin.generateLink({
+                ).catch(() => null),
+                serverClient.auth.admin.generateLink({
                   type: "magiclink",
                   email: cleanEmail,
-                });
-                const tokenHash = linkData?.properties?.hashed_token;
-                if (tokenHash) {
-                  res.statusCode = 200;
-                  res.setHeader("Content-Type", "application/json");
-                  res.end(JSON.stringify({ success: true, tokenHash }));
-                  return;
-                }
-              } catch {}
+                }).catch(() => null),
+              ]);
 
+              const tokenHash = (linkResult as any)?.data?.properties?.hashed_token;
               res.statusCode = 200;
               res.setHeader("Content-Type", "application/json");
-              res.end(JSON.stringify({ success: true }));
+              res.end(JSON.stringify({ success: true, tokenHash, userId: user.id }));
             } catch (err: any) {
               console.error("[DevAPI verify-otp]:", err);
               if (!res.headersSent) {

@@ -29,6 +29,15 @@ function mapProfile(row: {
   };
 }
 
+// In-memory profile cache for fast navigation and instant profile rendering
+const profileCache = new Map<string, { profile: CustomerProfile; time: number }>();
+const PROFILE_CACHE_TTL = 300000; // 5 minutes
+
+export function invalidateProfileCache(userId?: string) {
+  if (userId) profileCache.delete(userId);
+  else profileCache.clear();
+}
+
 export async function fetchProfile(
   userId: string,
   fallback?: {
@@ -37,6 +46,14 @@ export async function fetchProfile(
     mobile?: string;
   }
 ): Promise<CustomerProfile | null> {
+  if (!userId) return null;
+
+  // 1. Instant cache hit (<1ms)
+  const cached = profileCache.get(userId);
+  if (cached && Date.now() - cached.time < PROFILE_CACHE_TTL) {
+    return cached.profile;
+  }
+
   const supabase = getSupabaseClient();
   if (!supabase) {
     return fallback
@@ -68,7 +85,11 @@ export async function fetchProfile(
           /* ignore */
         }
       }
-      return mapProfile(data);
+      const mapped = mapProfile(data);
+      if (mapped) {
+        profileCache.set(userId, { profile: mapped, time: Date.now() });
+        return mapped;
+      }
     }
 
     // If profile row doesn't exist yet in Supabase (e.g. fresh Google OAuth sign-in)
@@ -79,19 +100,22 @@ export async function fetchProfile(
         email: fallback.email || "",
         mobile: fallback.mobile || "",
       };
-      await upsertProfile(newProfile);
+      profileCache.set(userId, { profile: newProfile, time: Date.now() });
+      upsertProfile(newProfile).catch(() => {});
       return newProfile;
     }
   } catch {
     /* fallback to metadata */
   }
 
-  return {
+  const fallbackProfile = {
     id: userId,
     fullName: fallback?.fullName || "",
     email: fallback?.email || "",
     mobile: fallback?.mobile || "",
   };
+  profileCache.set(userId, { profile: fallbackProfile, time: Date.now() });
+  return fallbackProfile;
 }
 
 
@@ -122,6 +146,7 @@ export async function upsertProfile(profile: CustomerProfile): Promise<{ error?:
       console.error("[upsertProfile] DB error:", error.message);
       return { error: error.message };
     }
+    profileCache.set(profile.id, { profile, time: Date.now() });
   } catch (e: any) {
     console.error("[upsertProfile] Exception:", e?.message || e);
     return { error: e?.message || "Failed to save profile." };
@@ -245,6 +270,11 @@ export async function registerCustomer(input: {
       return { error: data.error || "Could not create account. Please try again." };
     }
 
+    // Save userId for instant 30ms verification lookup
+    if (data.userId && typeof window !== "undefined") {
+      sessionStorage.setItem("shreehari_auth_uid", data.userId);
+    }
+
     return {
       needsEmailVerification: true,
       unconfirmedEmail: email,
@@ -278,6 +308,10 @@ export async function verifyEmailOtp(
   }
 
   const cleanEmail = email.trim().toLowerCase();
+  const pendingUserId =
+    typeof window !== "undefined"
+      ? sessionStorage.getItem("shreehari_auth_uid") || undefined
+      : undefined;
 
   try {
     const apiUrl =
@@ -288,7 +322,7 @@ export async function verifyEmailOtp(
     const res = await fetch(apiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: cleanEmail, otp: trimmedToken }),
+      body: JSON.stringify({ email: cleanEmail, otp: trimmedToken, userId: pendingUserId }),
     });
 
     const data = await res.json();
@@ -296,6 +330,10 @@ export async function verifyEmailOtp(
     if (!res.ok) {
       const msg = data.error || "Incorrect or expired verification code.";
       return { success: false, error: msg };
+    }
+
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("shreehari_auth_uid");
     }
 
     // Auto-login via magic link token if backend provided one
@@ -313,7 +351,9 @@ export async function verifyEmailOtp(
             fullName,
             email: cleanEmail,
           };
-          await upsertProfile(profile);
+          // Cache in memory immediately and sync DB in background for zero UI lag
+          profileCache.set(sessionData.user.id, { profile, time: Date.now() });
+          upsertProfile(profile).catch(() => {});
           return { success: true, user: sessionData.user, profile };
         }
       } catch {
@@ -337,6 +377,10 @@ export async function resendEmailOtp(
   if (emailErr) return { success: false, error: emailErr };
 
   const cleanEmail = email.trim().toLowerCase();
+  const pendingUserId =
+    typeof window !== "undefined"
+      ? sessionStorage.getItem("shreehari_auth_uid") || undefined
+      : undefined;
 
   try {
     const apiUrl =
@@ -347,7 +391,7 @@ export async function resendEmailOtp(
     const res = await fetch(apiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: cleanEmail, resend: true }),
+      body: JSON.stringify({ email: cleanEmail, resend: true, userId: pendingUserId }),
     });
 
     const data = await res.json();
@@ -524,6 +568,7 @@ export async function updateCustomerProfile(input: {
 }
 
 export async function logoutCustomer(): Promise<void> {
+  invalidateProfileCache();
   const supabase = getSupabaseClient();
   if (supabase) {
     try {

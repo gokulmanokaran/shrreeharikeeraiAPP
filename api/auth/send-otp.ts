@@ -25,6 +25,7 @@ async function sendOtpEmail(
       const gasRes = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
+        signal: AbortSignal.timeout(11000),
         body: JSON.stringify({
           action: "send_otp",
           email: to,
@@ -56,6 +57,7 @@ async function sendOtpEmail(
           Authorization: `Bearer ${RESEND_API_KEY}`,
           "Content-Type": "application/json",
         },
+        signal: AbortSignal.timeout(5000),
         body: JSON.stringify({
           from: "Shree Hari Keerai <onboarding@resend.dev>",
           to: [to],
@@ -79,12 +81,11 @@ async function sendOtpEmail(
   return { ok: false, error: lastError || "Could not send verification email. Please try again." };
 }
 
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { email, password, fullName, resend: isResend } = req.body || {};
+  const { email, password, fullName, resend: isResend, userId } = req.body || {};
   if (!email) return res.status(400).json({ error: "Email is required" });
 
   const cleanEmail = email.trim().toLowerCase();
@@ -94,17 +95,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const otp = generateOtp();
   const otpExpiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
-  const { data: listData } = await serverClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  const existingUser = (listData?.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
+  // ── RESEND FLOW ────────────────────────────────────────────────────────────
+  if (isResend) {
+    let existingUser: any = null;
+    if (userId) {
+      const { data: userById } = await serverClient.auth.admin.getUserById(userId);
+      if (userById?.user && userById.user.email?.toLowerCase() === cleanEmail) {
+        existingUser = userById.user;
+      }
+    }
+    if (!existingUser) {
+      const { data: listData } = await serverClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      existingUser = (listData?.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
+    }
 
-  if (existingUser) {
-    const isVerified = Boolean(existingUser.email_confirmed_at || existingUser.confirmed_at);
-    if (isVerified && !isResend) {
-      return res.status(409).json({ error: "An account already exists with this email address. Please log in instead.", emailAlreadyExists: true });
+    if (!existingUser) {
+      return res.status(404).json({ error: "No account found with this email. Please sign up." });
     }
 
     const displayName = existingUser.user_metadata?.full_name || (fullName ? fullName.trim() : cleanEmail.split("@")[0]);
-    const emailResult = await sendOtpEmail(cleanEmail, otp, displayName);
+
+    // Run updateUser and sendOtpEmail in parallel for speed
+    const [, emailResult] = await Promise.all([
+      serverClient.auth.admin.updateUserById(existingUser.id, {
+        user_metadata: { ...existingUser.user_metadata, pending_otp: otp, otp_expiry: otpExpiry },
+      }),
+      sendOtpEmail(cleanEmail, otp, displayName),
+    ]);
 
     if (!emailResult.ok) {
       return res.status(400).json({
@@ -113,46 +130,87 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    await serverClient.auth.admin.updateUserById(existingUser.id, {
-      user_metadata: { ...existingUser.user_metadata, pending_otp: otp, otp_expiry: otpExpiry },
-    });
-
     return res.status(200).json({ success: true, userId: existingUser.id });
   }
 
+  // ── FRESH SIGNUP FLOW ──────────────────────────────────────────────────────
   if (!password || !fullName) return res.status(400).json({ error: "Password and full name are required" });
 
-  // 1. Try sending the OTP email first
-  const emailResult = await sendOtpEmail(cleanEmail, otp, fullName.trim());
+  // Fast check: is this email already confirmed and in profiles? (~35ms indexed query)
+  const { data: existingProfile } = await serverClient
+    .from("profiles")
+    .select("id")
+    .ilike("email", cleanEmail)
+    .maybeSingle();
 
+  if (existingProfile) {
+    return res.status(409).json({
+      error: "An account already exists with this email address. Please log in instead.",
+      emailAlreadyExists: true,
+    });
+  }
+
+  // Run createUser AND sendOtpEmail in PARALLEL for maximum speed!
+  const [createResult, emailResult] = await Promise.all([
+    serverClient.auth.admin.createUser({
+      email: cleanEmail,
+      password,
+      email_confirm: false,
+      user_metadata: {
+        full_name: fullName.trim(),
+        pending_otp: otp,
+        otp_expiry: otpExpiry,
+      },
+    }),
+    sendOtpEmail(cleanEmail, otp, fullName.trim()),
+  ]);
+
+  // Handle user already registered (unconfirmed account from previous attempt)
+  if (createResult.error) {
+    if (/already/i.test(createResult.error.message) || createResult.error.status === 422) {
+      const { data: listData } = await serverClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      const existing = (listData?.users || []).find((u) => u.email?.toLowerCase() === cleanEmail);
+      if (existing) {
+        const isVerified = Boolean(existing.email_confirmed_at || existing.confirmed_at);
+        if (isVerified) {
+          return res.status(409).json({
+            error: "An account already exists with this email address. Please log in instead.",
+            emailAlreadyExists: true,
+          });
+        }
+
+        // Update the existing unconfirmed user with the new password and OTP
+        await serverClient.auth.admin.updateUserById(existing.id, {
+          password,
+          user_metadata: { ...existing.user_metadata, full_name: fullName.trim(), pending_otp: otp, otp_expiry: otpExpiry },
+        });
+
+        if (!emailResult.ok) {
+          return res.status(400).json({
+            error: `Could not send verification email to ${cleanEmail}. ${emailResult.error || ""}`,
+            emailSendFailed: true,
+          });
+        }
+
+        return res.status(200).json({ success: true, userId: existing.id });
+      }
+    }
+    return res.status(500).json({ error: createResult.error.message });
+  }
+
+  // If email sending failed, clean up the unconfirmed user so user can retry cleanly
   if (!emailResult.ok) {
+    if (createResult.data?.user?.id) {
+      await serverClient.auth.admin.deleteUser(createResult.data.user.id).catch(() => {});
+    }
     return res.status(400).json({
-      error: `Could not send verification email to ${cleanEmail}. ${emailResult.error || "Resend test account only allows sending to shreeharikeerai1@gmail.com until domain is verified."}`,
+      error: `Could not send verification email to ${cleanEmail}. ${emailResult.error || "Please try again."}`,
       emailSendFailed: true,
     });
   }
 
-  // 2. Create the user in unconfirmed state with pending_otp
-  const { data: newUserData, error: createError } = await serverClient.auth.admin.createUser({
-    email: cleanEmail,
-    password,
-    email_confirm: false,
-    user_metadata: {
-      full_name: fullName.trim(),
-      pending_otp: otp,
-      otp_expiry: otpExpiry,
-    },
-  });
-
-  if (createError) {
-    if (/already/i.test(createError.message) || createError.status === 422) {
-      return res.status(409).json({ error: "An account already exists with this email address. Please log in instead.", emailAlreadyExists: true });
-    }
-    return res.status(500).json({ error: createError.message });
-  }
-
   return res.status(200).json({
     success: true,
-    userId: newUserData?.user?.id,
+    userId: createResult.data?.user?.id,
   });
 }
