@@ -11,6 +11,9 @@
     "seed-catalog": "npx tsx scripts/seed-catalog.ts"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/core": "^8.5.2",
     "@googlemaps/js-api-loader": "^2.1.1",
     "@supabase/supabase-js": "^2.112.4",
     "@types/leaflet": "^1.9.22",

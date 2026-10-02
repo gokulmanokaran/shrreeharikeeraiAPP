@@ -6,7 +6,6 @@ import { AlertCircle } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { AuthField, AuthLayout } from "../components/layout/AuthLayout";
 import { EmailOtpVerification } from "../components/features/EmailOtpVerification";
-import { GoogleAuthButton } from "../components/features/GoogleAuthButton";
 import { loginCustomer } from "../services/authService";
 import { useAuth } from "../store/AuthContext";
 import { validatePassword, validateRequiredEmail } from "../utils/validation";
@@ -132,19 +131,6 @@ export default function LoginPage() {
             transition={{ duration: 0.18 }}
             className="space-y-4"
           >
-            {/* Google OAuth */}
-            <GoogleAuthButton
-              targetPath={targetPath}
-              onError={(err) => setEmailErrors({ form: err })}
-            />
-
-            {/* Divider */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-[#EAEAEA]" />
-              <span className="text-xs font-semibold text-[#AAAAAA]">or</span>
-              <div className="flex-1 h-px bg-[#EAEAEA]" />
-            </div>
-
             {/* Email & Password form */}
             <motion.form
               key="email-form"

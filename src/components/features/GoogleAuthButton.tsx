@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { signInWithGoogle } from "../../services/authService";
+import { getOAuthRedirectUrl } from "../../utils/platform";
 
 function GoogleIcon({ className = "w-5 h-5" }: { className?: string }) {
   return (
@@ -31,60 +32,7 @@ interface GoogleAuthButtonProps {
   disabled?: boolean;
 }
 
-export function GoogleAuthButton({
-  targetPath = "/",
-  onError,
-  disabled = false,
-}: GoogleAuthButtonProps) {
-  const [loading, setLoading] = useState(false);
-
-  const handleGoogleLogin = async () => {
-    if (loading || disabled) return;
-
-    setLoading(true);
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("shreehari_auth_redirect", targetPath);
-    }
-
-    // Redirect to the dedicated OAuth callback route
-    const redirectUrl =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/auth/callback`
-        : undefined;
-
-    const res = await signInWithGoogle(redirectUrl);
-
-    if (res.error) {
-      setLoading(false);
-      onError?.(res.error);
-    }
-  };
-
-  return (
-    <div className="w-full">
-      <div className="relative flex items-center justify-center my-3.5">
-        <div className="border-t border-[#EAEAEA] w-full" />
-        <span className="bg-white px-3 text-[11px] font-bold text-[#999999] uppercase tracking-wider absolute">
-          or
-        </span>
-      </div>
-
-      <motion.button
-        type="button"
-        whileTap={{ scale: 0.97 }}
-        onClick={handleGoogleLogin}
-        disabled={loading || disabled}
-        className="w-full h-12 rounded-[14px] border-2 border-[#EAEAEA] hover:border-gray-300 hover:bg-gray-50/50 bg-white text-sm font-bold text-[#111111] flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
-      >
-        {loading ? (
-          <span className="w-4 h-4 border-2 border-[#00A651] border-t-transparent rounded-full animate-spin" />
-        ) : (
-          <>
-            <GoogleIcon className="w-5 h-5" />
-            <span>Continue with Google</span>
-          </>
-        )}
-      </motion.button>
-    </div>
-  );
+export function GoogleAuthButton(_props?: any) {
+  // Google OAuth is disabled to preserve seamless in-app WebView authentication
+  return null;
 }

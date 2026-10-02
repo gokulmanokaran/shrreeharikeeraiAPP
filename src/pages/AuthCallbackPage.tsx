@@ -9,11 +9,12 @@ export default function AuthCallbackPage() {
   const location = useLocation();
   const { refreshProfile } = useAuth();
   const [statusMessage, setStatusMessage] = useState("Completing Google sign in...");
-  const processedRef = useRef(false);
+  const lastProcessedKey = useRef<string>("");
 
   useEffect(() => {
-    if (processedRef.current) return;
-    processedRef.current = true;
+    const currentKey = `${location.search}|${location.hash}`;
+    if (lastProcessedKey.current === currentKey && currentKey !== "|") return;
+    lastProcessedKey.current = currentKey;
 
     const supabase = getSupabaseClient();
     if (!supabase) {
@@ -66,70 +67,86 @@ export default function AuthCallbackPage() {
       }
     };
 
-    // 3. Process PKCE code if present
-    const code = searchParams.get("code");
-    if (code) {
-      supabase.auth
-        .exchangeCodeForSession(code)
-        .then(({ data, error }) => {
-          if (error) {
-            console.warn("[AuthCallback] Error exchanging code for session:", error.message);
-            // Fall back to getSession() in case already exchanged
-            return supabase.auth.getSession();
-          }
-          return { data: { session: data.session }, error: null };
-        })
-        .then(({ data }) => {
-          if (data?.session?.user) {
+    const runAuthResolution = async () => {
+      // 3. Process PKCE code if present (?code=...)
+      const code = searchParams.get("code");
+      if (code) {
+        try {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          if (!error && data?.session?.user) {
             const user = data.session.user;
             const fullName = String(
               user.user_metadata?.full_name || user.user_metadata?.name || ""
             );
-            finalizeLogin(user.id, user.email, fullName);
-          } else {
-            navigate("/login", { replace: true });
+            await finalizeLogin(user.id, user.email, fullName);
+            return;
           }
-        })
-        .catch((err) => {
+          if (error) {
+            console.warn("[AuthCallback] Code exchange warning:", error.message);
+          }
+        } catch (err) {
           console.warn("[AuthCallback] Exchange code exception:", err);
-          navigate("/login", { replace: true });
-        });
-      return;
-    }
+        }
+      }
 
-    // 4. Handle implicit hash token or existing session
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
+      // 4. Process implicit hash tokens (#access_token=...&refresh_token=...)
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+      if (accessToken && refreshToken) {
+        try {
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (!error && data?.session?.user) {
+            const user = data.session.user;
+            const fullName = String(
+              user.user_metadata?.full_name || user.user_metadata?.name || ""
+            );
+            await finalizeLogin(user.id, user.email, fullName);
+            return;
+          }
+          if (error) {
+            console.warn("[AuthCallback] Hash session warning:", error.message);
+          }
+        } catch (err) {
+          console.warn("[AuthCallback] Set session exception:", err);
+        }
+      }
+
+      // 5. Existing session or hydration
+      try {
+        const { data } = await supabase.auth.getSession();
         if (data?.session?.user) {
           const user = data.session.user;
           const fullName = String(
             user.user_metadata?.full_name || user.user_metadata?.name || ""
           );
-          finalizeLogin(user.id, user.email, fullName);
-        } else {
-          // Listen briefly for onAuthStateChange in case session is hydrating
-          const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (session?.user) {
-              sub.subscription.unsubscribe();
-              const user = session.user;
-              const fullName = String(
-                user.user_metadata?.full_name || user.user_metadata?.name || ""
-              );
-              finalizeLogin(user.id, user.email, fullName);
-            }
-          });
-
-          // Timeout safety
-          setTimeout(() => {
-            sub.subscription.unsubscribe();
-            navigate("/login", { replace: true });
-          }, 4500);
+          await finalizeLogin(user.id, user.email, fullName);
+          return;
         }
-      })
-      .catch(() => {
-        navigate("/login", { replace: true });
+      } catch {}
+
+      // 6. Listen briefly for onAuthStateChange in case session is actively hydrating
+      const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (session?.user) {
+          sub.subscription.unsubscribe();
+          const user = session.user;
+          const fullName = String(
+            user.user_metadata?.full_name || user.user_metadata?.name || ""
+          );
+          await finalizeLogin(user.id, user.email, fullName);
+        }
       });
+
+      // Timeout safety
+      setTimeout(() => {
+        sub.subscription.unsubscribe();
+        navigate("/login", { replace: true });
+      }, 4500);
+    };
+
+    runAuthResolution();
   }, [location.search, location.hash, navigate, refreshProfile]);
 
   return (
