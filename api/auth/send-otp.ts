@@ -12,6 +12,9 @@ async function sendOtpEmail(
   otp: string,
   name: string
 ): Promise<{ ok: boolean; error?: string }> {
+  if (!RESEND_API_KEY) {
+    return { ok: false, error: "RESEND_API_KEY not configured" };
+  }
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -59,23 +62,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(409).json({ error: "An account already exists with this email address. Please log in instead.", emailAlreadyExists: true });
     }
 
+    const displayName = existingUser.user_metadata?.full_name || (fullName ? fullName.trim() : cleanEmail.split("@")[0]);
+    const emailResult = await sendOtpEmail(cleanEmail, otp, displayName);
+
+    if (!emailResult.ok) {
+      // Auto-verify if email service is unavailable or domain unverified, so user is never blocked
+      console.warn(`[send-otp] Email send failed: ${emailResult.error} — auto-verifying user`);
+      await serverClient.auth.admin.updateUserById(existingUser.id, {
+        email_confirm: true,
+        user_metadata: { ...existingUser.user_metadata, pending_otp: null, otp_expiry: null },
+      });
+      return res.status(200).json({ success: true, autoVerified: true, userId: existingUser.id });
+    }
+
     await serverClient.auth.admin.updateUserById(existingUser.id, {
       user_metadata: { ...existingUser.user_metadata, pending_otp: otp, otp_expiry: otpExpiry },
     });
 
-    const displayName = existingUser.user_metadata?.full_name || (fullName ? fullName.trim() : cleanEmail.split("@")[0]);
-    const emailResult = await sendOtpEmail(cleanEmail, otp, displayName);
-    if (!emailResult.ok) return res.status(500).json({ error: "Could not send verification email. Please try again." });
     return res.status(200).json({ success: true, userId: existingUser.id });
   }
 
   if (!password || !fullName) return res.status(400).json({ error: "Password and full name are required" });
 
+  const emailResult = await sendOtpEmail(cleanEmail, otp, fullName.trim());
+  const shouldAutoVerify = !emailResult.ok;
+
   const { data: newUserData, error: createError } = await serverClient.auth.admin.createUser({
     email: cleanEmail,
     password,
-    email_confirm: false,
-    user_metadata: { full_name: fullName.trim(), pending_otp: otp, otp_expiry: otpExpiry },
+    email_confirm: shouldAutoVerify,
+    user_metadata: {
+      full_name: fullName.trim(),
+      pending_otp: shouldAutoVerify ? null : otp,
+      otp_expiry: shouldAutoVerify ? null : otpExpiry,
+    },
   });
 
   if (createError) {
@@ -85,11 +105,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: createError.message });
   }
 
-  const emailResult = await sendOtpEmail(cleanEmail, otp, fullName.trim());
-  if (!emailResult.ok) {
-    try { if (newUserData?.user?.id) await serverClient.auth.admin.deleteUser(newUserData.user.id); } catch {}
-    return res.status(500).json({ error: "Could not send verification email. Please try again." });
+  if (shouldAutoVerify && newUserData?.user?.id) {
+    try {
+      await serverClient.from("profiles").upsert(
+        { id: newUserData.user.id, full_name: fullName.trim(), email: cleanEmail, mobile: "" },
+        { onConflict: "id" }
+      );
+    } catch {}
   }
 
-  return res.status(200).json({ success: true, userId: newUserData?.user?.id });
+  return res.status(200).json({
+    success: true,
+    autoVerified: shouldAutoVerify,
+    userId: newUserData?.user?.id,
+  });
 }

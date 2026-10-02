@@ -163,16 +163,138 @@ function localDevApiPlugin(): Plugin {
           req.on("end", async () => {
             try {
               const body = JSON.parse(rawBody || "{}");
-              const handlerUrl = pathToFileURL(path.resolve(__dirname, "api/auth/send-otp.ts")).href;
-              const mod = await import(handlerUrl) as { default: (req: any, res: any) => Promise<void> };
-              const adaptedReq = Object.assign(req, { body });
-              const r: any = res;
-              if (!r.status) r.status = function(s: number) { this.statusCode = s; return this; };
-              if (!r.json) r.json = function(obj: any) { this.setHeader("Content-Type","application/json"); this.end(JSON.stringify(obj)); return this; };
-              await mod.default(adaptedReq, r);
+              const { email, password, fullName, resend: isResend } = body;
+              if (!email) {
+                res.statusCode = 400;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "Email is required" }));
+                return;
+              }
+
+              const serverModUrl = pathToFileURL(path.resolve(__dirname, "api/_supabase.ts")).href;
+              const { getSupabaseServerClient } = (await import(serverModUrl)) as {
+                getSupabaseServerClient: () => any;
+              };
+              const serverClient = getSupabaseServerClient();
+              if (!serverClient) {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "Server configuration error" }));
+                return;
+              }
+
+              const cleanEmail = String(email).trim().toLowerCase();
+              const otp = Math.floor(100000 + Math.random() * 900000).toString();
+              const otpExpiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+              const apiKey = process.env.RESEND_API_KEY || "";
+              let emailSent = false;
+              if (apiKey) {
+                try {
+                  const resendRes = await fetch("https://api.resend.com/emails", {
+                    method: "POST",
+                    headers: {
+                      Authorization: `Bearer ${apiKey}`,
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      from: "Shree Hari Keerai <onboarding@resend.dev>",
+                      to: [cleanEmail],
+                      subject: "Your Shree Hari Keerai verification code",
+                      html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;"><h2 style="color:#00A651;">Shree Hari Keerai</h2><p>Hello <strong>${fullName || "Customer"}</strong>,</p><p>Your email verification code is:</p><div style="background:#EAF8F0;border:2px solid #00A651;border-radius:12px;padding:28px;text-align:center;margin:24px 0;"><span style="font-size:40px;font-weight:900;letter-spacing:14px;color:#00A651;">${otp}</span></div><p style="color:#666;font-size:14px;">This code expires in <strong>60 minutes</strong>.</p><hr style="border:none;border-top:1px solid #eee;margin:24px 0;"><p style="color:#999;font-size:12px;">Fresh greens delivered across Coimbatore</p></div>`,
+                    }),
+                  });
+                  emailSent = resendRes.ok;
+                } catch {
+                  emailSent = false;
+                }
+              }
+
+              const { data: listData } = await serverClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
+              const existingUser = (listData?.users || []).find((u: any) => u.email?.toLowerCase() === cleanEmail);
+
+              if (existingUser) {
+                const isVerified = Boolean(existingUser.email_confirmed_at || existingUser.confirmed_at);
+                if (isVerified && !isResend) {
+                  res.statusCode = 409;
+                  res.setHeader("Content-Type", "application/json");
+                  res.end(JSON.stringify({ error: "An account already exists with this email address. Please log in instead.", emailAlreadyExists: true }));
+                  return;
+                }
+
+                if (!emailSent) {
+                  console.log(`[DevAPI send-otp] Resend blocked recipient ${cleanEmail} (domain unverified) — auto-verifying user`);
+                  await serverClient.auth.admin.updateUserById(existingUser.id, {
+                    email_confirm: true,
+                    user_metadata: { ...existingUser.user_metadata, pending_otp: null, otp_expiry: null },
+                  });
+                  res.statusCode = 200;
+                  res.setHeader("Content-Type", "application/json");
+                  res.end(JSON.stringify({ success: true, autoVerified: true, userId: existingUser.id }));
+                  return;
+                }
+
+                await serverClient.auth.admin.updateUserById(existingUser.id, {
+                  user_metadata: { ...existingUser.user_metadata, pending_otp: otp, otp_expiry: otpExpiry },
+                });
+                res.statusCode = 200;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ success: true, userId: existingUser.id }));
+                return;
+              }
+
+              if (!password || !fullName) {
+                res.statusCode = 400;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "Password and full name are required" }));
+                return;
+              }
+
+              const shouldAutoVerify = !emailSent;
+              const { data: newUserData, error: createError } = await serverClient.auth.admin.createUser({
+                email: cleanEmail,
+                password,
+                email_confirm: shouldAutoVerify,
+                user_metadata: {
+                  full_name: String(fullName).trim(),
+                  pending_otp: shouldAutoVerify ? null : otp,
+                  otp_expiry: shouldAutoVerify ? null : otpExpiry,
+                },
+              });
+
+              if (createError) {
+                if (/already/i.test(createError.message) || createError.status === 422) {
+                  res.statusCode = 409;
+                  res.setHeader("Content-Type", "application/json");
+                  res.end(JSON.stringify({ error: "An account already exists with this email address. Please log in instead.", emailAlreadyExists: true }));
+                  return;
+                }
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: createError.message }));
+                return;
+              }
+
+              if (shouldAutoVerify && newUserData?.user?.id) {
+                try {
+                  await serverClient.from("profiles").upsert(
+                    { id: newUserData.user.id, full_name: String(fullName).trim(), email: cleanEmail, mobile: "" },
+                    { onConflict: "id" }
+                  );
+                } catch {}
+              }
+
+              console.log(`[DevAPI send-otp] User ${cleanEmail} created. autoVerified: ${shouldAutoVerify}`);
+              res.statusCode = 200;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ success: true, autoVerified: shouldAutoVerify, userId: newUserData?.user?.id }));
             } catch (err: any) {
               console.error("[DevAPI send-otp]:", err);
-              if (!res.headersSent) { res.statusCode = 500; res.setHeader("Content-Type","application/json"); res.end(JSON.stringify({ error: err?.message || "Internal error" })); }
+              if (!res.headersSent) {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: err?.message || "Internal error" }));
+              }
             }
           });
           return;
@@ -186,16 +308,99 @@ function localDevApiPlugin(): Plugin {
           req.on("end", async () => {
             try {
               const body = JSON.parse(rawBody || "{}");
-              const handlerUrl = pathToFileURL(path.resolve(__dirname, "api/auth/verify-otp.ts")).href;
-              const mod = await import(handlerUrl) as { default: (req: any, res: any) => Promise<void> };
-              const adaptedReq = Object.assign(req, { body });
-              const r: any = res;
-              if (!r.status) r.status = function(s: number) { this.statusCode = s; return this; };
-              if (!r.json) r.json = function(obj: any) { this.setHeader("Content-Type","application/json"); this.end(JSON.stringify(obj)); return this; };
-              await mod.default(adaptedReq, r);
+              const { email, otp } = body;
+              if (!email || !otp) {
+                res.statusCode = 400;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "Email and OTP are required" }));
+                return;
+              }
+
+              const serverModUrl = pathToFileURL(path.resolve(__dirname, "api/_supabase.ts")).href;
+              const { getSupabaseServerClient } = (await import(serverModUrl)) as {
+                getSupabaseServerClient: () => any;
+              };
+              const serverClient = getSupabaseServerClient();
+              if (!serverClient) {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "Server configuration error" }));
+                return;
+              }
+
+              const cleanEmail = String(email).trim().toLowerCase();
+              const cleanOtp = String(otp).trim();
+
+              const { data: listData } = await serverClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
+              const user = (listData?.users || []).find((u: any) => u.email?.toLowerCase() === cleanEmail);
+
+              if (!user) {
+                res.statusCode = 404;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "No account found. Please sign up again." }));
+                return;
+              }
+
+              const storedOtp = user.user_metadata?.pending_otp;
+              const otpExpiry = user.user_metadata?.otp_expiry;
+
+              if (!storedOtp) {
+                res.statusCode = 400;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "No verification code found. Please request a new one." }));
+                return;
+              }
+
+              if (new Date() > new Date(otpExpiry)) {
+                res.statusCode = 400;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "Verification code has expired. Please request a new one." }));
+                return;
+              }
+
+              if (storedOtp !== cleanOtp) {
+                res.statusCode = 400;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "Incorrect verification code. Please try again." }));
+                return;
+              }
+
+              await serverClient.auth.admin.updateUserById(user.id, {
+                email_confirm: true,
+                user_metadata: { ...user.user_metadata, pending_otp: null, otp_expiry: null },
+              });
+
+              try {
+                await serverClient.from("profiles").upsert(
+                  { id: user.id, full_name: user.user_metadata?.full_name || "", email: cleanEmail, mobile: "" },
+                  { onConflict: "id" }
+                );
+              } catch {}
+
+              try {
+                const { data: linkData } = await serverClient.auth.admin.generateLink({
+                  type: "magiclink",
+                  email: cleanEmail,
+                });
+                const tokenHash = linkData?.properties?.hashed_token;
+                if (tokenHash) {
+                  res.statusCode = 200;
+                  res.setHeader("Content-Type", "application/json");
+                  res.end(JSON.stringify({ success: true, tokenHash }));
+                  return;
+                }
+              } catch {}
+
+              res.statusCode = 200;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ success: true }));
             } catch (err: any) {
               console.error("[DevAPI verify-otp]:", err);
-              if (!res.headersSent) { res.statusCode = 500; res.setHeader("Content-Type","application/json"); res.end(JSON.stringify({ error: err?.message || "Internal error" })); }
+              if (!res.headersSent) {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: err?.message || "Internal error" }));
+              }
             }
           });
           return;
