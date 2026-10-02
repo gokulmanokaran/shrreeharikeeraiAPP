@@ -23,7 +23,7 @@ export function ApiInspectorModal({ isOpen, onClose }: ApiInspectorModalProps) {
   const [copied, setCopied] = useState(false);
 
   const productsApiUrl = `${window.location.origin}/api/products`;
-  const categoriesApiUrl = `${window.location.origin}/api/categories`;
+  const categoriesApiUrl = `${window.location.origin}/api/products?type=categories`;
 
   const loadPreview = () => {
     setLoading(true);

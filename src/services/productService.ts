@@ -193,7 +193,7 @@ export async function fetchLiveCategories(): Promise<Category[]> {
 
   // 2. Fallback to API endpoint
   try {
-    const res = await fetch(`/api/categories?_ts=${Date.now()}`, {
+    const res = await fetch(`/api/products?type=categories&_ts=${Date.now()}`, {
       headers: { Accept: "application/json", "Cache-Control": "no-cache" },
       cache: "no-store",
     });

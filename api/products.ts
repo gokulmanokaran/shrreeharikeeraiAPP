@@ -1,9 +1,12 @@
 // Vercel Serverless Function: /api/products
-// Central Product API for Website, Separate Admin Panel, and Future Android App.
-import type { Product } from "./_catalog.js";
+// Central Product & Category API for Website, Admin Panel, and Future Android App.
+// Also handles /api/products?type=categories to stay within Vercel Hobby 12-function limit.
+import type { Product, Category } from "./_catalog.js";
 import {
   getCloudProducts,
   saveCloudProducts,
+  getCloudCategories,
+  saveCloudCategories,
   validateAdminAuth,
   getLastCatalogUpdate,
   handleCors,
@@ -22,6 +25,56 @@ export default async function handler(req: any, res?: any): Promise<any> {
   const category = query.category;
   const search = query.search;
   const inStockOnly = query.inStock === "true";
+
+  // ── Route: /api/products?type=categories  (consolidated to stay within Hobby plan limit) ──
+  if (query.type === "categories") {
+    if (method === "GET") {
+      try {
+        const categories = await getCloudCategories();
+        return sendApiResponse(
+          res,
+          200,
+          { success: true, count: categories.length, data: categories },
+          "public, max-age=0, s-maxage=60, stale-while-revalidate=86400"
+        );
+      } catch (err) {
+        return sendApiResponse(res, 500, { success: false, error: err instanceof Error ? err.message : "Internal Error" });
+      }
+    }
+
+    if (!validateAdminAuth(getHeader)) {
+      return sendApiResponse(res, 401, { success: false, error: "Unauthorized." });
+    }
+
+    if (method === "POST" || method === "PUT") {
+      try {
+        if (Array.isArray(body)) {
+          const saveResult = await saveCloudCategories(body);
+          return sendApiResponse(res, 200, { success: true, message: `Saved ${body.length} categories.`, count: body.length, data: body, storage: saveResult });
+        }
+        const newCat: Category = {
+          id: body.id || `cat_${Date.now()}`,
+          name: body.name || "Untitled Category",
+          emoji: body.emoji || "📦",
+          description: body.description || "",
+          color: body.color || "#F5F5F5",
+          image: body.image || "",
+          sortOrder: body.sortOrder || 99,
+          active: body.active !== false,
+        };
+        const existing = await getCloudCategories();
+        const idx = existing.findIndex((c: Category) => c.id === newCat.id);
+        const updatedList = idx >= 0 ? existing.map((c: Category, i: number) => i === idx ? newCat : c) : [...existing, newCat];
+        const saveResult = await saveCloudCategories(updatedList);
+        return sendApiResponse(res, 200, { success: true, message: "Category saved.", data: newCat, storage: saveResult });
+      } catch (err) {
+        return sendApiResponse(res, 400, { success: false, error: err instanceof Error ? err.message : "Error saving category" });
+      }
+    }
+
+    return sendApiResponse(res, 405, { error: "Method not allowed" });
+  }
+
 
   // ── GET: Public Read Products ──────────────────────────────────────────────
   if (method === "GET") {

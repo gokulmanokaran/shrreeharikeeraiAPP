@@ -395,7 +395,7 @@ export async function fetchCategories(): Promise<Category[]> {
 
   // REST Fallback
   try {
-    const res = await fetch(`/api/categories?_ts=${Date.now()}`);
+    const res = await fetch(`/api/products?type=categories&_ts=${Date.now()}`);
     if (res.ok) {
       const json = await res.json();
       const list = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
@@ -464,7 +464,7 @@ export async function saveCategory(category: Partial<Category>): Promise<Categor
   }
 
   // REST Fallback
-  const res = await fetch("/api/categories", {
+  const res = await fetch("/api/products?type=categories", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -499,7 +499,7 @@ export async function deleteCategory(id: string): Promise<boolean> {
   }
 
   // REST API Fallback
-  const res2 = await fetch("/api/categories", {
+  const res2 = await fetch("/api/products?type=categories", {
     method: "DELETE",
     headers: {
       "Content-Type": "application/json",
