@@ -583,17 +583,38 @@ export async function requestPasswordReset(email: string): Promise<{
     console.warn("[requestPasswordReset] Pre-check error:", err);
   }
 
-  const supabase = getSupabaseClient();
-  if (!supabase) return { error: "Authentication service is unavailable." };
-
   const redirectTo = getResetPasswordRedirectUrl();
 
-  const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-    redirectTo,
-  });
+  try {
+    const forgotUrl =
+      typeof window !== "undefined"
+        ? "/api/auth/forgot-password"
+        : "http://localhost:5173/api/auth/forgot-password";
 
-  if (error) return { error: error.message };
-  return { success: true };
+    const res = await fetch(forgotUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: cleanEmail,
+        redirectTo,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      if (data.notFound) {
+        return {
+          error: data.error || "No account found with this email address. Please create an account first.",
+          notFound: true,
+        };
+      }
+      return { error: data.error || "Could not send password reset email. Please try again." };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { error: err?.message || "Network error. Please try again." };
+  }
 }
 
 export async function updateCustomerPassword(

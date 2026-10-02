@@ -79,6 +79,46 @@ function doPost(e) {
       }
     }
 
+    // ── 0b. PASSWORD RESET EMAIL DISPATCH ─────────────────────────────────
+    if (data.action === "send_password_reset") {
+      var resetRecipient = (data.email || "").trim();
+      var resetLink = data.resetLink || "";
+      var recipientName = data.fullName || "Customer";
+
+      if (!resetRecipient || resetRecipient.indexOf("@") === -1 || !resetLink) {
+        return createJsonResponse({ success: false, error: "Valid email and resetLink are required" }, 400);
+      }
+
+      var resetSubject = "🔐 Reset Your Password — Shree Hari Keerai";
+      var resetHtml = data.html || (
+        '<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">' +
+        '<h2 style="color:#00A651;margin:0 0 16px 0;">Shree Hari Keerai</h2>' +
+        '<p style="color:#333;font-size:16px;">Hello <strong>' + recipientName + '</strong>,</p>' +
+        '<p style="color:#555;font-size:14px;line-height:1.5;">We received a request to reset your password. Click the button below to set a new password for your account:</p>' +
+        '<div style="text-align:center;margin:28px 0;">' +
+        '<a href="' + resetLink + '" target="_blank" style="display:inline-block;background-color:#00A651;color:#ffffff;padding:14px 28px;border-radius:10px;text-decoration:none;font-size:16px;font-weight:bold;letter-spacing:0.5px;">Set New Password 🔐</a>' +
+        '</div>' +
+        '<p style="color:#777;font-size:12px;line-height:1.5;">Or copy and paste this link into your browser:<br><a href="' + resetLink + '" style="color:#00A651;word-break:break-all;">' + resetLink + '</a></p>' +
+        '<p style="color:#666;font-size:13px;margin-top:20px;">This link will expire in <strong>1 hour</strong>. If you did not request a password reset, you can safely ignore this email.</p>' +
+        '<hr style="border:none;border-top:1px solid #eee;margin:24px 0;">' +
+        '<p style="color:#999;font-size:12px;">Fresh greens delivered across Coimbatore · Shree Hari Keerai</p>' +
+        '</div>'
+      );
+
+      try {
+        MailApp.sendEmail({
+          to: resetRecipient,
+          subject: resetSubject,
+          htmlBody: resetHtml
+        });
+        Logger.log("[doPost] Password reset email sent to: " + resetRecipient);
+        return createJsonResponse({ success: true, emailSent: true });
+      } catch (err) {
+        Logger.log("[doPost] Error sending password reset email: " + err.toString());
+        return createJsonResponse({ success: false, error: err.toString() }, 500);
+      }
+    }
+
     var orderId = data.orderId || "ORD-" + new Date().getTime();
 
     Logger.log(

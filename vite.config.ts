@@ -430,6 +430,144 @@ function localDevApiPlugin(): Plugin {
           return;
         }
 
+        // POST /api/auth/forgot-password (local dev)
+        if (url.startsWith("/api/auth/forgot-password") && (req.method === "POST" || req.method === "OPTIONS")) {
+          if (req.method === "OPTIONS") { res.statusCode = 200; res.end(); return; }
+          let rawBody = "";
+          req.on("data", (chunk: any) => { rawBody += chunk; });
+          req.on("end", async () => {
+            try {
+              const body = JSON.parse(rawBody || "{}");
+              const { email, redirectTo } = body;
+              if (!email) {
+                res.statusCode = 400;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "Email is required" }));
+                return;
+              }
+
+              const serverModUrl = pathToFileURL(path.resolve(__dirname, "api/_supabase.ts")).href;
+              const { getSupabaseServerClient } = (await import(serverModUrl)) as {
+                getSupabaseServerClient: () => any;
+              };
+              const serverClient = getSupabaseServerClient();
+              if (!serverClient) {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "Server configuration error" }));
+                return;
+              }
+
+              const cleanEmail = String(email).trim().toLowerCase();
+              const { data: listData } = await serverClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
+              const user = (listData?.users || []).find((u: any) => u.email?.toLowerCase() === cleanEmail);
+
+              if (!user) {
+                res.statusCode = 404;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ notFound: true, error: "No account found with this email address. Please create an account first." }));
+                return;
+              }
+
+              const fallbackRedirect = "http://localhost:5173/reset-password";
+              const targetRedirect = redirectTo || fallbackRedirect;
+
+              const { data: linkData, error: linkError } = await serverClient.auth.admin.generateLink({
+                type: "recovery",
+                email: cleanEmail,
+                options: {
+                  redirectTo: targetRedirect,
+                },
+              });
+
+              if (linkError || !linkData?.properties?.action_link) {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: linkError?.message || "Could not generate password reset link" }));
+                return;
+              }
+
+              const actionLink = linkData.properties.action_link;
+              const displayName = user.user_metadata?.full_name || cleanEmail.split("@")[0];
+
+              const subject = "🔐 Reset Your Password — Shree Hari Keerai";
+              const html = `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;"><h2 style="color:#00A651;margin:0 0 16px 0;">Shree Hari Keerai</h2><p style="color:#333;font-size:16px;">Hello <strong>${displayName}</strong>,</p><p style="color:#555;font-size:14px;line-height:1.5;">We received a request to reset your password. Click the button below to set a new password for your account:</p><div style="text-align:center;margin:28px 0;"><a href="${actionLink}" target="_blank" style="display:inline-block;background-color:#00A651;color:#ffffff;padding:14px 28px;border-radius:10px;text-decoration:none;font-size:16px;font-weight:bold;letter-spacing:0.5px;">Set New Password 🔐</a></div><p style="color:#777;font-size:12px;line-height:1.5;">Or copy and paste this link into your browser:<br><a href="${actionLink}" style="color:#00A651;word-break:break-all;">${actionLink}</a></p><p style="color:#666;font-size:13px;margin-top:20px;">This link will expire in <strong>1 hour</strong>. If you did not request a password reset, you can safely ignore this email.</p><hr style="border:none;border-top:1px solid #eee;margin:24px 0;"><p style="color:#999;font-size:12px;">Fresh greens delivered across Coimbatore · Shree Hari Keerai</p></div>`;
+
+              const apiKey = process.env.RESEND_API_KEY || "";
+              let emailSent = false;
+              if (apiKey) {
+                try {
+                  const resendRes = await fetch("https://api.resend.com/emails", {
+                    method: "POST",
+                    headers: {
+                      Authorization: `Bearer ${apiKey}`,
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      from: "Shree Hari Keerai <onboarding@resend.dev>",
+                      to: [cleanEmail],
+                      subject,
+                      html,
+                    }),
+                  });
+                  emailSent = resendRes.ok;
+                } catch {
+                  emailSent = false;
+                }
+              }
+
+              // Fallback to Google Apps Script Webhook
+              const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || process.env.VITE_ORDER_WEBHOOK_URL || "";
+              if (!emailSent && webhookUrl) {
+                try {
+                  const gasRes = await fetch(webhookUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({
+                      action: "send_password_reset",
+                      email: cleanEmail,
+                      resetLink: actionLink,
+                      fullName: displayName,
+                      html,
+                    }),
+                  });
+                  const gasText = await gasRes.text();
+                  let gasData: any = {};
+                  try { gasData = JSON.parse(gasText); } catch {}
+                  if (gasData?.success && gasData?.emailSent) {
+                    console.log(`[DevAPI forgot-password] Successfully sent password reset email via GAS to ${cleanEmail}`);
+                    emailSent = true;
+                  }
+                } catch (gasErr: any) {
+                  console.warn("[DevAPI forgot-password] GAS fallback error:", gasErr?.message);
+                }
+              }
+
+              if (!emailSent) {
+                res.statusCode = 400;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({
+                  error: `Could not send password reset email to ${cleanEmail}. Resend free account only sends to shreeharikeerai1@gmail.com until domain is verified. Please test with shreeharikeerai1@gmail.com or verify domain on resend.com.`,
+                }));
+                return;
+              }
+
+              console.log(`[DevAPI forgot-password] Password reset link sent to ${cleanEmail}`);
+              res.statusCode = 200;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ success: true }));
+            } catch (err: any) {
+              console.error("[DevAPI forgot-password]:", err);
+              if (!res.headersSent) {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: err?.message || "Internal error" }));
+              }
+            }
+          });
+          return;
+        }
+
 
         // GET /api/products
         if (url.startsWith("/api/products") && req.method === "GET") {
