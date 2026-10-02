@@ -118,7 +118,7 @@ export default function PrivacyPolicyPage() {
               <a href="mailto:shreeharikeerai1@gmail.com" className="text-[#00A651] font-semibold">shreeharikeerai1@gmail.com</a>
             </p>
             <div className="pt-2 border-t border-[#EAEAEA] flex flex-col gap-1 text-[#666666]">
-              <p><strong>FSSAI:</strong> 22423557000359</p>
+              <p><strong>FSSAI:</strong> 22426557000683</p>
               <p><strong>GSTIN:</strong> 33BBHPP5925L1ZA</p>
             </div>
           </div>

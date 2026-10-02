@@ -25,7 +25,7 @@ export function Footer() {
           </p>
           <div className="flex flex-col gap-1 text-xs text-gray-300 font-medium">
             <div>
-              <span className="text-gray-400 font-normal">FSSAI:</span> 22423557000359
+              <span className="text-gray-400 font-normal">FSSAI:</span> 22426557000683
             </div>
             <div>
               <span className="text-gray-400 font-normal">GSTIN:</span> 33BBHPP5925L1ZA
