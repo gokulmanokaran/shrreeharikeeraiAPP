@@ -13,7 +13,37 @@ async function sendResetEmail(
   const subject = "🔐 Reset Your Password — Shree Hari Keerai";
   const html = `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;"><h2 style="color:#00A651;margin:0 0 16px 0;">Shree Hari Keerai</h2><p style="color:#333;font-size:16px;">Hello <strong>${name}</strong>,</p><p style="color:#555;font-size:14px;line-height:1.5;">We received a request to reset your password. Click the button below to set a new password for your account:</p><div style="text-align:center;margin:28px 0;"><a href="${resetLink}" target="_blank" style="display:inline-block;background-color:#00A651;color:#ffffff;padding:14px 28px;border-radius:10px;text-decoration:none;font-size:16px;font-weight:bold;letter-spacing:0.5px;">Set New Password 🔐</a></div><p style="color:#777;font-size:12px;line-height:1.5;">Or copy and paste this link into your browser:<br><a href="${resetLink}" style="color:#00A651;word-break:break-all;">${resetLink}</a></p><p style="color:#666;font-size:13px;margin-top:20px;">This link will expire in <strong>1 hour</strong>. If you did not request a password reset, you can safely ignore this email.</p><hr style="border:none;border-top:1px solid #eee;margin:24px 0;"><p style="color:#999;font-size:12px;">Fresh greens delivered across Coimbatore · Shree Hari Keerai</p></div>`;
 
-  // 1. Try Resend
+  // 1. PRIMARY: Google Apps Script Webhook (Gmail - no domain restriction, works for any recipient)
+  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || process.env.VITE_ORDER_WEBHOOK_URL || "";
+  if (webhookUrl) {
+    try {
+      const gasRes = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: "send_password_reset",
+          email: to,
+          resetLink,
+          fullName: name,
+          html,
+        }),
+      });
+      const gasText = await gasRes.text();
+      let gasData: any = {};
+      try { gasData = JSON.parse(gasText); } catch {}
+      if (gasData?.success && gasData?.emailSent) {
+        console.log(`[forgot-password] Password reset sent via Google Apps Script to ${to}`);
+        return { ok: true };
+      }
+      lastError = gasData?.error || "Google Apps Script did not confirm delivery";
+      console.warn(`[forgot-password] GAS response for ${to}:`, gasText.slice(0, 200));
+    } catch (gasErr: any) {
+      lastError = gasErr?.message || "GAS exception";
+      console.warn("[forgot-password] Google Apps Script error:", lastError);
+    }
+  }
+
+  // 2. FALLBACK: Resend API (only works if recipient is verified owner email OR domain is verified)
   if (RESEND_API_KEY) {
     try {
       const res = await fetch("https://api.resend.com/emails", {
@@ -36,36 +66,9 @@ async function sendResetEmail(
 
       const errData = await res.json().catch(() => ({} as Record<string, string>));
       lastError = (errData as Record<string, string>).message || "Resend email send failed";
-      console.warn(`[forgot-password] Resend failed for ${to}:`, lastError);
+      console.warn(`[forgot-password] Resend also failed for ${to}:`, lastError);
     } catch (e: any) {
       lastError = e?.message || "Resend exception";
-    }
-  }
-
-  // 2. Fallback to Google Apps Script Webhook
-  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || process.env.VITE_ORDER_WEBHOOK_URL || "";
-  if (webhookUrl) {
-    try {
-      const gasRes = await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-          action: "send_password_reset",
-          email: to,
-          resetLink,
-          fullName: name,
-          html,
-        }),
-      });
-      const gasText = await gasRes.text();
-      let gasData: any = {};
-      try { gasData = JSON.parse(gasText); } catch {}
-      if (gasData?.success && gasData?.emailSent) {
-        console.log(`[forgot-password] Successfully sent password reset email via Google Apps Script to ${to}`);
-        return { ok: true };
-      }
-    } catch (gasErr: any) {
-      console.warn("[forgot-password] GAS fallback error:", gasErr?.message);
     }
   }
 

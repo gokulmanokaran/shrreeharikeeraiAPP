@@ -14,7 +14,36 @@ async function sendOtpEmail(
 ): Promise<{ ok: boolean; error?: string }> {
   let lastError = "";
 
-  // 1. Try Resend API
+  // 1. PRIMARY: Google Apps Script Webhook (Gmail - no domain restriction, works for any recipient)
+  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || process.env.VITE_ORDER_WEBHOOK_URL || "";
+  if (webhookUrl) {
+    try {
+      const gasRes = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: "send_otp",
+          email: to,
+          otp,
+          fullName: name,
+        }),
+      });
+      const gasText = await gasRes.text();
+      let gasData: any = {};
+      try { gasData = JSON.parse(gasText); } catch {}
+      if (gasData?.success && gasData?.emailSent) {
+        console.log(`[send-otp] OTP sent via Google Apps Script to ${to}`);
+        return { ok: true };
+      }
+      lastError = gasData?.error || "Google Apps Script did not confirm delivery";
+      console.warn(`[send-otp] GAS response for ${to}:`, gasText.slice(0, 200));
+    } catch (gasErr: any) {
+      lastError = gasErr?.message || "GAS exception";
+      console.warn("[send-otp] Google Apps Script error:", lastError);
+    }
+  }
+
+  // 2. FALLBACK: Resend API (only works if recipient is verified owner email OR domain is verified)
   if (RESEND_API_KEY) {
     try {
       const res = await fetch("https://api.resend.com/emails", {
@@ -37,40 +66,15 @@ async function sendOtpEmail(
 
       const errData = await res.json().catch(() => ({} as Record<string, string>));
       lastError = (errData as Record<string, string>).message || "Resend email send failed";
-      console.warn(`[send-otp] Resend failed for ${to}: ${lastError}`);
+      console.warn(`[send-otp] Resend also failed for ${to}: ${lastError}`);
     } catch (e: any) {
       lastError = (e as any)?.message || "Resend exception";
     }
   }
 
-  // 2. Fallback to Google Apps Script Webhook (Gmail delivery without domain restrictions)
-  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || process.env.VITE_ORDER_WEBHOOK_URL || "";
-  if (webhookUrl) {
-    try {
-      const gasRes = await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-          action: "send_otp",
-          email: to,
-          otp,
-          fullName: name,
-        }),
-      });
-      const gasText = await gasRes.text();
-      let gasData: any = {};
-      try { gasData = JSON.parse(gasText); } catch {}
-      if (gasData?.success && gasData?.emailSent) {
-        console.log(`[send-otp] Successfully sent OTP via Google Apps Script to ${to}`);
-        return { ok: true };
-      }
-    } catch (gasErr: any) {
-      console.warn("[send-otp] Google Apps Script fallback error:", gasErr?.message);
-    }
-  }
-
-  return { ok: false, error: lastError || "Could not send verification email" };
+  return { ok: false, error: lastError || "Could not send verification email. Please try again." };
 }
+
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "OPTIONS") return res.status(200).end();
