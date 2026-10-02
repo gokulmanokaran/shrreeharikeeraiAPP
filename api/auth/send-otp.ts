@@ -15,7 +15,11 @@ async function sendOtpEmail(
   let lastError = "";
 
   // 1. PRIMARY: Google Apps Script Webhook (Gmail - no domain restriction, works for any recipient)
-  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || process.env.VITE_ORDER_WEBHOOK_URL || "";
+  const webhookUrl =
+    process.env.GOOGLE_SHEETS_WEBHOOK_URL ||
+    process.env.VITE_ORDER_WEBHOOK_URL ||
+    process.env.ORDER_WEBHOOK_URL ||
+    "https://script.google.com/macros/s/AKfycbzjXsA4gHp4u30Qx9RhFamyOIrSjqs2yi9K5wAF1YylK8FU9Ushsex8kffAIIRUR3bI/exec";
   if (webhookUrl) {
     try {
       const gasRes = await fetch(webhookUrl, {

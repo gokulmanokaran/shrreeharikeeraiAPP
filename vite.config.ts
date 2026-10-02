@@ -191,8 +191,41 @@ function localDevApiPlugin(): Plugin {
               let emailSent = false;
               let emailError = "";
 
-              // 1. Try Resend
-              if (apiKey) {
+              // 1. PRIMARY: Google Apps Script Webhook (Gmail - works for any recipient)
+              const webhookUrl =
+                process.env.GOOGLE_SHEETS_WEBHOOK_URL ||
+                process.env.VITE_ORDER_WEBHOOK_URL ||
+                process.env.ORDER_WEBHOOK_URL ||
+                "https://script.google.com/macros/s/AKfycbzjXsA4gHp4u30Qx9RhFamyOIrSjqs2yi9K5wAF1YylK8FU9Ushsex8kffAIIRUR3bI/exec";
+              if (webhookUrl) {
+                try {
+                  const gasRes = await fetch(webhookUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({
+                      action: "send_otp",
+                      email: cleanEmail,
+                      otp,
+                      fullName: fullName || "Customer",
+                    }),
+                  });
+                  const gasText = await gasRes.text();
+                  let gasData: any = {};
+                  try { gasData = JSON.parse(gasText); } catch {}
+                  if (gasData?.success && gasData?.emailSent) {
+                    console.log(`[DevAPI send-otp] Successfully sent OTP via Google Apps Script to ${cleanEmail}`);
+                    emailSent = true;
+                  } else {
+                    emailError = gasData?.error || "Google Apps Script did not send OTP";
+                  }
+                } catch (gasErr: any) {
+                  emailError = gasErr?.message || "GAS error";
+                  console.warn("[DevAPI send-otp] GAS error:", emailError);
+                }
+              }
+
+              // 2. FALLBACK: Resend
+              if (!emailSent && apiKey) {
                 try {
                   const resendRes = await fetch("https://api.resend.com/emails", {
                     method: "POST",
@@ -216,32 +249,6 @@ function localDevApiPlugin(): Plugin {
                   }
                 } catch (e: any) {
                   emailError = e?.message || "Resend error";
-                }
-              }
-
-              // 2. Fallback to Google Apps Script Webhook
-              const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || process.env.VITE_ORDER_WEBHOOK_URL || "";
-              if (!emailSent && webhookUrl) {
-                try {
-                  const gasRes = await fetch(webhookUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": "text/plain;charset=utf-8" },
-                    body: JSON.stringify({
-                      action: "send_otp",
-                      email: cleanEmail,
-                      otp,
-                      fullName: fullName || "Customer",
-                    }),
-                  });
-                  const gasText = await gasRes.text();
-                  let gasData: any = {};
-                  try { gasData = JSON.parse(gasText); } catch {}
-                  if (gasData?.success && gasData?.emailSent) {
-                    console.log(`[DevAPI send-otp] Successfully sent OTP via Google Apps Script to ${cleanEmail}`);
-                    emailSent = true;
-                  }
-                } catch (gasErr: any) {
-                  console.warn("[DevAPI send-otp] GAS fallback error:", gasErr?.message);
                 }
               }
 
@@ -495,30 +502,14 @@ function localDevApiPlugin(): Plugin {
 
               const apiKey = process.env.RESEND_API_KEY || "";
               let emailSent = false;
-              if (apiKey) {
-                try {
-                  const resendRes = await fetch("https://api.resend.com/emails", {
-                    method: "POST",
-                    headers: {
-                      Authorization: `Bearer ${apiKey}`,
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                      from: "Shree Hari Keerai <onboarding@resend.dev>",
-                      to: [cleanEmail],
-                      subject,
-                      html,
-                    }),
-                  });
-                  emailSent = resendRes.ok;
-                } catch {
-                  emailSent = false;
-                }
-              }
 
-              // Fallback to Google Apps Script Webhook
-              const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || process.env.VITE_ORDER_WEBHOOK_URL || "";
-              if (!emailSent && webhookUrl) {
+              // 1. PRIMARY: Google Apps Script Webhook (Gmail - works for any recipient)
+              const webhookUrl =
+                process.env.GOOGLE_SHEETS_WEBHOOK_URL ||
+                process.env.VITE_ORDER_WEBHOOK_URL ||
+                process.env.ORDER_WEBHOOK_URL ||
+                "https://script.google.com/macros/s/AKfycbzjXsA4gHp4u30Qx9RhFamyOIrSjqs2yi9K5wAF1YylK8FU9Ushsex8kffAIIRUR3bI/exec";
+              if (webhookUrl) {
                 try {
                   const gasRes = await fetch(webhookUrl, {
                     method: "POST",
@@ -539,7 +530,29 @@ function localDevApiPlugin(): Plugin {
                     emailSent = true;
                   }
                 } catch (gasErr: any) {
-                  console.warn("[DevAPI forgot-password] GAS fallback error:", gasErr?.message);
+                  console.warn("[DevAPI forgot-password] GAS error:", gasErr?.message);
+                }
+              }
+
+              // 2. FALLBACK: Resend
+              if (!emailSent && apiKey) {
+                try {
+                  const resendRes = await fetch("https://api.resend.com/emails", {
+                    method: "POST",
+                    headers: {
+                      Authorization: `Bearer ${apiKey}`,
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      from: "Shree Hari Keerai <onboarding@resend.dev>",
+                      to: [cleanEmail],
+                      subject,
+                      html,
+                    }),
+                  });
+                  emailSent = resendRes.ok;
+                } catch {
+                  emailSent = false;
                 }
               }
 
