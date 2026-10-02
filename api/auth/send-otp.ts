@@ -25,7 +25,7 @@ async function sendOtpEmail(
       const gasRes = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        signal: AbortSignal.timeout(11000),
+        signal: AbortSignal.timeout(24000),
         body: JSON.stringify({
           action: "send_otp",
           email: to,
@@ -48,7 +48,7 @@ async function sendOtpEmail(
     }
   }
 
-  // 2. FALLBACK: Resend API (only works if recipient is verified owner email OR domain is verified)
+  // 2. FALLBACK: Resend API (for verified domain or owner email)
   if (RESEND_API_KEY) {
     try {
       const res = await fetch("https://api.resend.com/emails", {
@@ -69,12 +69,8 @@ async function sendOtpEmail(
       if (res.ok) {
         return { ok: true };
       }
-
-      const errData = await res.json().catch(() => ({} as Record<string, string>));
-      lastError = (errData as Record<string, string>).message || "Resend email send failed";
-      console.warn(`[send-otp] Resend also failed for ${to}: ${lastError}`);
     } catch (e: any) {
-      lastError = (e as any)?.message || "Resend exception";
+      console.warn("[send-otp] Resend fallback error:", e?.message);
     }
   }
 

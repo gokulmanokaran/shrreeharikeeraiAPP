@@ -24,6 +24,7 @@ async function sendResetEmail(
       const gasRes = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
+        signal: AbortSignal.timeout(24000),
         body: JSON.stringify({
           action: "send_password_reset",
           email: to,
