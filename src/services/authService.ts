@@ -411,14 +411,6 @@ export async function registerCustomer(input: {
       return { error: data.error || "Could not create account. Please try again." };
     }
 
-    if (data.autoVerified) {
-      const loginRes = await loginCustomer({ email, password: input.password });
-      if (loginRes.user) {
-        return { user: loginRes.user, needsEmailVerification: false };
-      }
-      return { needsEmailVerification: false };
-    }
-
     return {
       needsEmailVerification: true,
       unconfirmedEmail: email,

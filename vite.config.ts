@@ -189,6 +189,9 @@ function localDevApiPlugin(): Plugin {
 
               const apiKey = process.env.RESEND_API_KEY || "";
               let emailSent = false;
+              let emailError = "";
+
+              // 1. Try Resend
               if (apiKey) {
                 try {
                   const resendRes = await fetch("https://api.resend.com/emails", {
@@ -201,13 +204,56 @@ function localDevApiPlugin(): Plugin {
                       from: "Shree Hari Keerai <onboarding@resend.dev>",
                       to: [cleanEmail],
                       subject: "Your Shree Hari Keerai verification code",
-                      html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;"><h2 style="color:#00A651;">Shree Hari Keerai</h2><p>Hello <strong>${fullName || "Customer"}</strong>,</p><p>Your email verification code is:</p><div style="background:#EAF8F0;border:2px solid #00A651;border-radius:12px;padding:28px;text-align:center;margin:24px 0;"><span style="font-size:40px;font-weight:900;letter-spacing:14px;color:#00A651;">${otp}</span></div><p style="color:#666;font-size:14px;">This code expires in <strong>60 minutes</strong>.</p><hr style="border:none;border-top:1px solid #eee;margin:24px 0;"><p style="color:#999;font-size:12px;">Fresh greens delivered across Coimbatore</p></div>`,
+                      html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;"><h2 style="color:#00A651;margin:0 0 16px 0;">Shree Hari Keerai</h2><p style="color:#333;font-size:16px;">Hello <strong>${fullName || "Customer"}</strong>,</p><p style="color:#555;font-size:14px;">Your email verification code is:</p><div style="background:#EAF8F0;border:2px solid #00A651;border-radius:12px;padding:24px;text-align:center;margin:24px 0;"><span style="font-size:38px;font-weight:900;letter-spacing:12px;color:#00A651;">${otp}</span></div><p style="color:#666;font-size:14px;">This code expires in <strong>60 minutes</strong>.</p><p style="color:#666;font-size:14px;">If you did not sign up, please ignore this email.</p><hr style="border:none;border-top:1px solid #eee;margin:24px 0;"><p style="color:#999;font-size:12px;">Fresh greens delivered across Coimbatore · Shree Hari Keerai</p></div>`,
                     }),
                   });
-                  emailSent = resendRes.ok;
-                } catch {
-                  emailSent = false;
+                  if (resendRes.ok) {
+                    emailSent = true;
+                  } else {
+                    const errData: any = await resendRes.json().catch(() => ({}));
+                    emailError = errData?.message || "Resend email send failed";
+                    console.warn(`[DevAPI send-otp] Resend failed for ${cleanEmail}:`, emailError);
+                  }
+                } catch (e: any) {
+                  emailError = e?.message || "Resend error";
                 }
+              }
+
+              // 2. Fallback to Google Apps Script Webhook
+              const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || process.env.VITE_ORDER_WEBHOOK_URL || "";
+              if (!emailSent && webhookUrl) {
+                try {
+                  const gasRes = await fetch(webhookUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({
+                      action: "send_otp",
+                      email: cleanEmail,
+                      otp,
+                      fullName: fullName || "Customer",
+                    }),
+                  });
+                  const gasText = await gasRes.text();
+                  let gasData: any = {};
+                  try { gasData = JSON.parse(gasText); } catch {}
+                  if (gasData?.success && gasData?.emailSent) {
+                    console.log(`[DevAPI send-otp] Successfully sent OTP via Google Apps Script to ${cleanEmail}`);
+                    emailSent = true;
+                  }
+                } catch (gasErr: any) {
+                  console.warn("[DevAPI send-otp] GAS fallback error:", gasErr?.message);
+                }
+              }
+
+              if (!emailSent) {
+                console.error(`[DevAPI send-otp] Could not send OTP to ${cleanEmail}: ${emailError}`);
+                res.statusCode = 400;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({
+                  error: `Could not send OTP to ${cleanEmail}. Resend free account only sends to shreeharikeerai1@gmail.com until domain is verified. Please test with shreeharikeerai1@gmail.com or verify domain on resend.com.`,
+                  emailSendFailed: true,
+                }));
+                return;
               }
 
               const { data: listData } = await serverClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
@@ -219,18 +265,6 @@ function localDevApiPlugin(): Plugin {
                   res.statusCode = 409;
                   res.setHeader("Content-Type", "application/json");
                   res.end(JSON.stringify({ error: "An account already exists with this email address. Please log in instead.", emailAlreadyExists: true }));
-                  return;
-                }
-
-                if (!emailSent) {
-                  console.log(`[DevAPI send-otp] Resend blocked recipient ${cleanEmail} (domain unverified) — auto-verifying user`);
-                  await serverClient.auth.admin.updateUserById(existingUser.id, {
-                    email_confirm: true,
-                    user_metadata: { ...existingUser.user_metadata, pending_otp: null, otp_expiry: null },
-                  });
-                  res.statusCode = 200;
-                  res.setHeader("Content-Type", "application/json");
-                  res.end(JSON.stringify({ success: true, autoVerified: true, userId: existingUser.id }));
                   return;
                 }
 
@@ -250,15 +284,14 @@ function localDevApiPlugin(): Plugin {
                 return;
               }
 
-              const shouldAutoVerify = !emailSent;
               const { data: newUserData, error: createError } = await serverClient.auth.admin.createUser({
                 email: cleanEmail,
                 password,
-                email_confirm: shouldAutoVerify,
+                email_confirm: false,
                 user_metadata: {
                   full_name: String(fullName).trim(),
-                  pending_otp: shouldAutoVerify ? null : otp,
-                  otp_expiry: shouldAutoVerify ? null : otpExpiry,
+                  pending_otp: otp,
+                  otp_expiry: otpExpiry,
                 },
               });
 
@@ -275,19 +308,10 @@ function localDevApiPlugin(): Plugin {
                 return;
               }
 
-              if (shouldAutoVerify && newUserData?.user?.id) {
-                try {
-                  await serverClient.from("profiles").upsert(
-                    { id: newUserData.user.id, full_name: String(fullName).trim(), email: cleanEmail, mobile: "" },
-                    { onConflict: "id" }
-                  );
-                } catch {}
-              }
-
-              console.log(`[DevAPI send-otp] User ${cleanEmail} created. autoVerified: ${shouldAutoVerify}`);
+              console.log(`[DevAPI send-otp] OTP sent to ${cleanEmail}. Waiting for OTP verification.`);
               res.statusCode = 200;
               res.setHeader("Content-Type", "application/json");
-              res.end(JSON.stringify({ success: true, autoVerified: shouldAutoVerify, userId: newUserData?.user?.id }));
+              res.end(JSON.stringify({ success: true, userId: newUserData?.user?.id }));
             } catch (err: any) {
               console.error("[DevAPI send-otp]:", err);
               if (!res.headersSent) {

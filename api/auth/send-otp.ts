@@ -12,31 +12,64 @@ async function sendOtpEmail(
   otp: string,
   name: string
 ): Promise<{ ok: boolean; error?: string }> {
-  if (!RESEND_API_KEY) {
-    return { ok: false, error: "RESEND_API_KEY not configured" };
-  }
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "Shree Hari Keerai <onboarding@resend.dev>",
-        to: [to],
-        subject: "Your Shree Hari Keerai verification code",
-        html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;"><h2 style="color:#00A651;">Shree Hari Keerai</h2><p>Hello <strong>${name}</strong>,</p><p>Your email verification code is:</p><div style="background:#EAF8F0;border:2px solid #00A651;border-radius:12px;padding:28px;text-align:center;margin:24px 0;"><span style="font-size:40px;font-weight:900;letter-spacing:14px;color:#00A651;">${otp}</span></div><p style="color:#666;font-size:14px;">This code expires in <strong>60 minutes</strong>.</p><p style="color:#666;font-size:14px;">If you did not sign up, please ignore this email.</p><hr style="border:none;border-top:1px solid #eee;margin:24px 0;"><p style="color:#999;font-size:12px;">Fresh greens delivered across Coimbatore</p></div>`,
-      }),
-    });
-    if (!res.ok) {
+  let lastError = "";
+
+  // 1. Try Resend API
+  if (RESEND_API_KEY) {
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "Shree Hari Keerai <onboarding@resend.dev>",
+          to: [to],
+          subject: "Your Shree Hari Keerai verification code",
+          html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;"><h2 style="color:#00A651;margin:0 0 16px 0;">Shree Hari Keerai</h2><p style="color:#333;font-size:16px;">Hello <strong>${name}</strong>,</p><p style="color:#555;font-size:14px;">Your email verification code is:</p><div style="background:#EAF8F0;border:2px solid #00A651;border-radius:12px;padding:24px;text-align:center;margin:24px 0;"><span style="font-size:38px;font-weight:900;letter-spacing:12px;color:#00A651;">${otp}</span></div><p style="color:#666;font-size:14px;">This code expires in <strong>60 minutes</strong>.</p><p style="color:#666;font-size:14px;">If you did not sign up, please ignore this email.</p><hr style="border:none;border-top:1px solid #eee;margin:24px 0;"><p style="color:#999;font-size:12px;">Fresh greens delivered across Coimbatore · Shree Hari Keerai</p></div>`,
+        }),
+      });
+
+      if (res.ok) {
+        return { ok: true };
+      }
+
       const errData = await res.json().catch(() => ({} as Record<string, string>));
-      return { ok: false, error: (errData as Record<string, string>).message || "Email send failed" };
+      lastError = (errData as Record<string, string>).message || "Resend email send failed";
+      console.warn(`[send-otp] Resend failed for ${to}: ${lastError}`);
+    } catch (e: any) {
+      lastError = (e as any)?.message || "Resend exception";
     }
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, error: (e as any)?.message || "Email send failed" };
   }
+
+  // 2. Fallback to Google Apps Script Webhook (Gmail delivery without domain restrictions)
+  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || process.env.VITE_ORDER_WEBHOOK_URL || "";
+  if (webhookUrl) {
+    try {
+      const gasRes = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: "send_otp",
+          email: to,
+          otp,
+          fullName: name,
+        }),
+      });
+      const gasText = await gasRes.text();
+      let gasData: any = {};
+      try { gasData = JSON.parse(gasText); } catch {}
+      if (gasData?.success && gasData?.emailSent) {
+        console.log(`[send-otp] Successfully sent OTP via Google Apps Script to ${to}`);
+        return { ok: true };
+      }
+    } catch (gasErr: any) {
+      console.warn("[send-otp] Google Apps Script fallback error:", gasErr?.message);
+    }
+  }
+
+  return { ok: false, error: lastError || "Could not send verification email" };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -66,13 +99,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const emailResult = await sendOtpEmail(cleanEmail, otp, displayName);
 
     if (!emailResult.ok) {
-      // Auto-verify if email service is unavailable or domain unverified, so user is never blocked
-      console.warn(`[send-otp] Email send failed: ${emailResult.error} — auto-verifying user`);
-      await serverClient.auth.admin.updateUserById(existingUser.id, {
-        email_confirm: true,
-        user_metadata: { ...existingUser.user_metadata, pending_otp: null, otp_expiry: null },
+      return res.status(400).json({
+        error: `Could not send verification email to ${cleanEmail}. ${emailResult.error || ""}`,
+        emailSendFailed: true,
       });
-      return res.status(200).json({ success: true, autoVerified: true, userId: existingUser.id });
     }
 
     await serverClient.auth.admin.updateUserById(existingUser.id, {
@@ -84,17 +114,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!password || !fullName) return res.status(400).json({ error: "Password and full name are required" });
 
+  // 1. Try sending the OTP email first
   const emailResult = await sendOtpEmail(cleanEmail, otp, fullName.trim());
-  const shouldAutoVerify = !emailResult.ok;
 
+  if (!emailResult.ok) {
+    return res.status(400).json({
+      error: `Could not send verification email to ${cleanEmail}. ${emailResult.error || "Resend test account only allows sending to shreeharikeerai1@gmail.com until domain is verified."}`,
+      emailSendFailed: true,
+    });
+  }
+
+  // 2. Create the user in unconfirmed state with pending_otp
   const { data: newUserData, error: createError } = await serverClient.auth.admin.createUser({
     email: cleanEmail,
     password,
-    email_confirm: shouldAutoVerify,
+    email_confirm: false,
     user_metadata: {
       full_name: fullName.trim(),
-      pending_otp: shouldAutoVerify ? null : otp,
-      otp_expiry: shouldAutoVerify ? null : otpExpiry,
+      pending_otp: otp,
+      otp_expiry: otpExpiry,
     },
   });
 
@@ -105,18 +143,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: createError.message });
   }
 
-  if (shouldAutoVerify && newUserData?.user?.id) {
-    try {
-      await serverClient.from("profiles").upsert(
-        { id: newUserData.user.id, full_name: fullName.trim(), email: cleanEmail, mobile: "" },
-        { onConflict: "id" }
-      );
-    } catch {}
-  }
-
   return res.status(200).json({
     success: true,
-    autoVerified: shouldAutoVerify,
     userId: newUserData?.user?.id,
   });
 }

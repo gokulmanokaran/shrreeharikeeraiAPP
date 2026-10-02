@@ -38,7 +38,48 @@ function doPost(e) {
     }
 
     var data = JSON.parse(e.postData.contents);
-  var orderId = data.orderId || "ORD-" + new Date().getTime();
+
+    // ── 0. OTP EMAIL DISPATCH (No Sheet update needed) ─────────────────────
+    if (data.action === "send_otp") {
+      var otpRecipient = (data.email || "").trim();
+      var otpCode = data.otp || "";
+      var recipientName = data.fullName || "Customer";
+
+      if (!otpRecipient || otpRecipient.indexOf("@") === -1) {
+        return createJsonResponse({ success: false, error: "Valid email is required" }, 400);
+      }
+
+      var otpSubject = "Your Shree Hari Keerai verification code: " + otpCode;
+      var otpHtml = data.html || (
+        '<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">' +
+        '<h2 style="color:#00A651;margin:0 0 16px 0;">Shree Hari Keerai</h2>' +
+        '<p style="color:#333;font-size:16px;">Hello <strong>' + recipientName + '</strong>,</p>' +
+        '<p style="color:#555;font-size:14px;">Your email verification code is:</p>' +
+        '<div style="background:#EAF8F0;border:2px solid #00A651;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">' +
+        '<span style="font-size:38px;font-weight:900;letter-spacing:12px;color:#00A651;">' + otpCode + '</span>' +
+        '</div>' +
+        '<p style="color:#666;font-size:14px;">This code expires in <strong>60 minutes</strong>.</p>' +
+        '<p style="color:#666;font-size:14px;">If you did not sign up, please ignore this email.</p>' +
+        '<hr style="border:none;border-top:1px solid #eee;margin:24px 0;">' +
+        '<p style="color:#999;font-size:12px;">Fresh greens delivered across Coimbatore · Shree Hari Keerai</p>' +
+        '</div>'
+      );
+
+      try {
+        MailApp.sendEmail({
+          to: otpRecipient,
+          subject: otpSubject,
+          htmlBody: otpHtml
+        });
+        Logger.log("[doPost] OTP email successfully sent to: " + otpRecipient);
+        return createJsonResponse({ success: true, emailSent: true });
+      } catch (otpErr) {
+        Logger.log("[doPost] Error sending OTP email: " + otpErr.toString());
+        return createJsonResponse({ success: false, error: otpErr.toString() }, 500);
+      }
+    }
+
+    var orderId = data.orderId || "ORD-" + new Date().getTime();
 
     Logger.log(
       "[doPost] START | Order: " + orderId +
