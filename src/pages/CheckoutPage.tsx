@@ -97,7 +97,7 @@ function AddrChip({ label, color }: { label: string; color: "green" | "gray" | "
 export default function CheckoutPage() {
   const navigate = useNavigate();
   const { items, subtotal } = useCart();
-  const { pincode, setPincode } = useDelivery();
+  const { pincode, setPincode, savedLocation, saveLocation } = useDelivery();
   const { getProductById } = useProductCatalog();
 
   const minOrder = MINIMUM_ORDER_VALUE;
@@ -111,18 +111,40 @@ export default function CheckoutPage() {
   const [alternateMobile, setAlternateMobile] = useState(saved.alternateMobile || "");
   const [email, setEmail] = useState(saved.email || "");
 
-  const [delivery, setDelivery] = useState<DeliveryLocation>({
-    lat: null,
-    lng: null,
-    formattedAddress: "",
-    street: "",
-    area: "",
-    city: "",
-    district: "",
-    state: "",
-    pincode,
-    houseNo: "",
-    landmark: "",
+  const [delivery, setDelivery] = useState<DeliveryLocation>(() => {
+    if (
+      savedLocation &&
+      savedLocation.lat !== null &&
+      savedLocation.lng !== null &&
+      isValidPincode(savedLocation.pincode)
+    ) {
+      return {
+        lat: savedLocation.lat,
+        lng: savedLocation.lng,
+        formattedAddress: savedLocation.formattedAddress || "",
+        street: savedLocation.street || "",
+        area: savedLocation.area || "",
+        city: savedLocation.city || "Coimbatore",
+        district: savedLocation.district || "Coimbatore",
+        state: savedLocation.state || "Tamil Nadu",
+        pincode: savedLocation.pincode,
+        houseNo: savedLocation.houseNo || "",
+        landmark: savedLocation.landmark || "",
+      };
+    }
+    return {
+      lat: null,
+      lng: null,
+      formattedAddress: "",
+      street: "",
+      area: "",
+      city: "",
+      district: "",
+      state: "",
+      pincode,
+      houseNo: "",
+      landmark: "",
+    };
   });
 
   const [errors, setErrors] = useState<CheckoutErrors>({});
@@ -131,6 +153,35 @@ export default function CheckoutPage() {
   const [showAddressEdit, setShowAddressEdit] = useState(false);
 
   const isNavigatingRef = useRef(false);
+
+  // Sync saved location if hydrated after initial mount and no location set yet
+  useEffect(() => {
+    if (
+      delivery.lat === null &&
+      savedLocation &&
+      savedLocation.lat !== null &&
+      savedLocation.lng !== null &&
+      isValidPincode(savedLocation.pincode)
+    ) {
+      setDelivery((prev) => ({
+        ...prev,
+        lat: savedLocation.lat,
+        lng: savedLocation.lng,
+        formattedAddress: savedLocation.formattedAddress || prev.formattedAddress,
+        street: savedLocation.street || prev.street,
+        area: savedLocation.area || prev.area,
+        city: savedLocation.city || prev.city || "Coimbatore",
+        district: savedLocation.district || prev.district || "Coimbatore",
+        state: savedLocation.state || prev.state || "Tamil Nadu",
+        pincode: savedLocation.pincode,
+        houseNo: prev.houseNo || savedLocation.houseNo || "",
+        landmark: prev.landmark || savedLocation.landmark || "",
+      }));
+      if (savedLocation.pincode) {
+        setPincode(savedLocation.pincode);
+      }
+    }
+  }, [savedLocation, delivery.lat, setPincode]);
 
   // Reset placing state on mount and clear any stale pending order data
   // so a new checkout never inherits a previous order's ID or items.
@@ -180,10 +231,22 @@ export default function CheckoutPage() {
     if (result.pincode) {
       setPincode(result.pincode);
     }
+    // Synchronize to DeliveryContext, localStorage, and profile
+    saveLocation({
+      lat: result.lat,
+      lng: result.lng,
+      formattedAddress: result.formattedAddress,
+      street: result.street,
+      area: result.area,
+      city: result.city,
+      district: result.district,
+      state: result.state,
+      pincode: result.pincode,
+    });
     setErrors((prev) => ({ ...prev, location: undefined }));
     setShowMap(false);
     setShowAddressEdit(true);
-  }, [setPincode]);
+  }, [setPincode, saveLocation]);
 
   const handleProceedToPayment = () => {
     if (subtotal < minOrder) {

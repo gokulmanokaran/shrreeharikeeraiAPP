@@ -2,6 +2,7 @@
 export const STORAGE_KEYS = {
   CART: "shreehari_cart",
   PINCODE: "shreehari_pincode",
+  SAVED_LOCATION: "shreehari_saved_location",
   DELIVERY_CHARGE: "shreehari_delivery_charge",
   DELIVERY_AVAILABLE: "shreehari_delivery_available",
   NOTIFICATION_LAST_SENT: "shreehari_notif_last_sent", // date string YYYY-MM-DD

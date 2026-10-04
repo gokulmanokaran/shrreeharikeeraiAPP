@@ -1,13 +1,19 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "../components/layout/Header";
 import { Footer } from "../components/layout/Footer";
 import { Button } from "../components/ui/Button";
 import { useAuth } from "../store/AuthContext";
-import { Mail, Phone, UserRound, LogOut, Pencil } from "lucide-react";
+import { useDelivery } from "../store/DeliveryContext";
+import { MapLocationPicker } from "../components/features/MapLocationPicker";
+import { Mail, Phone, UserRound, LogOut, Pencil, MapPin } from "lucide-react";
 
 export default function ProfilePage() {
   const { profile, user, logout } = useAuth();
+  const { savedLocation, saveLocation } = useDelivery();
   const navigate = useNavigate();
+
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
 
   const fullName = profile?.fullName || String(user?.user_metadata?.full_name || "");
   const email = profile?.email || user?.email || "";
@@ -21,6 +27,17 @@ export default function ProfilePage() {
 
   return (
     <>
+      {showLocationPicker && (
+        <MapLocationPicker
+          initialLat={savedLocation?.lat}
+          initialLng={savedLocation?.lng}
+          onConfirm={async (result) => {
+            await saveLocation(result);
+            setShowLocationPicker(false);
+          }}
+          onClose={() => setShowLocationPicker(false)}
+        />
+      )}
       <Header onSearchOpen={() => navigate("/search")} />
       <main className="pb-24 max-w-lg mx-auto px-4 pt-5">
         <h1 className="text-xl font-black text-[#111111] mb-1">My Profile</h1>
@@ -68,6 +85,39 @@ export default function ProfilePage() {
                 <p className="text-[11px] font-bold text-[#888888] uppercase tracking-wide">Mobile Number</p>
                 <p className="text-sm font-semibold text-[#111111]">{mobile ? `+91 ${mobile}` : "—"}</p>
               </div>
+            </div>
+
+            {/* Location */}
+            <div className="flex items-start justify-between gap-3.5 pt-3 border-t border-[#F0F0F0]">
+              <div className="flex items-start gap-3.5 min-w-0">
+                <MapPin size={18} className="text-[#00A651] mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold text-[#888888] uppercase tracking-wide">Location</p>
+                  <p className="text-sm font-semibold text-[#111111] break-words">
+                    {savedLocation ? (
+                      savedLocation.formattedAddress ||
+                      `${savedLocation.area || savedLocation.city || "Coimbatore"} - ${savedLocation.pincode}`
+                    ) : (
+                      "Not added"
+                    )}
+                  </p>
+                  {savedLocation?.pincode && (
+                    <p className="text-xs text-[#087A43] font-semibold mt-0.5">
+                      Serviceable · {savedLocation.pincode}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                id="profile-location-edit-btn"
+                onClick={() => setShowLocationPicker(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-[#B9E8CE] hover:border-[#00A651] text-[#00A651] text-xs font-bold shadow-2xs hover:bg-[#EAF8F0] transition-all cursor-pointer shrink-0"
+                aria-label={savedLocation ? "Edit location" : "Add location"}
+              >
+                <Pencil size={12} />
+                <span>{savedLocation ? "Edit" : "Add Location"}</span>
+              </button>
             </div>
           </div>
         </div>

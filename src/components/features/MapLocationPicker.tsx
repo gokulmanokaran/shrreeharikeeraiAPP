@@ -518,7 +518,7 @@ export function MapLocationPicker({
                   <AlertCircle size={18} className="text-[#EA4335] flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="text-xs font-bold text-[#EA4335]">
-                      Sorry, delivery is not available for this pincode.
+                      Delivery is not available in this area.
                     </p>
                     <p className="text-[11px] text-[#666666] mt-0.5 leading-tight">
                       {detectedPincode
@@ -601,7 +601,7 @@ export function MapLocationPicker({
                 <ChevronRight size={20} strokeWidth={2.5} />
               </>
             ) : (
-              "Sorry, delivery is not available for this pincode."
+              "Delivery is not available in this area."
             )}
           </button>
         </div>
