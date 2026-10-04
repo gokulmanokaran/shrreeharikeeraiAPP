@@ -130,7 +130,7 @@ export default function LoginPage() {
   return (
     <AuthLayout title={getTitle()}>
       {/* ── Method Tabs (only shown on main form, not during OTP steps) ── */}
-      {emailStep === "login" && loginMethod === "email" && (
+      {emailStep === "login" && (
         <div className="flex gap-2 mb-5 bg-[#F5FCF8] rounded-[14px] p-1">
           <button
             id="login-tab-email"
