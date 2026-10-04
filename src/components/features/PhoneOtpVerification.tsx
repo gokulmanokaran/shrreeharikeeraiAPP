@@ -50,7 +50,7 @@ function validatePhone(raw: string): string | undefined {
 
 interface PhoneOtpVerificationProps {
   onSuccess: () => void;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 const IS_DEV =
@@ -148,7 +148,7 @@ export function PhoneOtpVerification({ onSuccess, onBack }: PhoneOtpVerification
   // Auto-focus first OTP box
   useEffect(() => {
     if (step === "enter_otp")
-      setTimeout(() => otpInputsRef.current[0]?.focus(), 250);
+      setTimeout(() => otpInputsRef.current[0]?.focus(), 50);
   }, [step]);
 
   // ── Error code → human message ────────────────────────────────────────────
@@ -213,6 +213,7 @@ export function PhoneOtpVerification({ onSuccess, onBack }: PhoneOtpVerification
 
   // ── Step 2: Verify OTP ────────────────────────────────────────────────────
   const handleVerify = async (codeOverride?: string) => {
+    if (verifying) return;
     const code = codeOverride ?? otp.join("");
     if (code.length !== 6) { setOtpError("Please enter the complete 6-digit OTP."); return; }
     if (!confirmationRef.current) { setOtpError("Session expired. Please go back and re-send the OTP."); return; }
@@ -313,15 +314,21 @@ export function PhoneOtpVerification({ onSuccess, onBack }: PhoneOtpVerification
       transition={{ duration: 0.18 }}
       className="space-y-4"
     >
-      {/* Back */}
-      <button
-        type="button"
-        onClick={step === "enter_otp" ? () => setStep("enter_phone") : onBack}
-        className="inline-flex items-center gap-1.5 text-xs font-bold text-[#00A651] hover:underline cursor-pointer"
-      >
-        <ArrowLeft size={14} />
-        {step === "enter_otp" ? "Change number" : "Back to login"}
-      </button>
+      {/* Back button only when entering OTP to change number */}
+      {step === "enter_otp" && (
+        <button
+          type="button"
+          onClick={() => {
+            setStep("enter_phone");
+            setOtp(["", "", "", "", "", ""]);
+            setOtpError("");
+          }}
+          className="inline-flex items-center gap-1.5 text-xs font-bold text-[#00A651] hover:underline cursor-pointer"
+        >
+          <ArrowLeft size={14} />
+          Change number
+        </button>
+      )}
 
       <AnimatePresence mode="wait">
 
@@ -337,13 +344,6 @@ export function PhoneOtpVerification({ onSuccess, onBack }: PhoneOtpVerification
             className="space-y-4"
             noValidate
           >
-            {/* Info banner */}
-            <div className="flex items-center gap-2 bg-[#F5FCF8] border border-[#B9E8CE]/60 rounded-[12px] p-3">
-              <Smartphone size={16} className="text-[#00A651] shrink-0" />
-              <p className="text-xs text-[#087A43] font-medium leading-snug">
-                Enter your mobile number. OTP will be sent via SMS — no captcha required.
-              </p>
-            </div>
 
             <AuthField
               id="phone-number-input"

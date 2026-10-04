@@ -26,7 +26,7 @@ export default function LoginPage() {
   const targetPath = typeof from === "string" ? from : from?.pathname || "/";
 
   // ── Active login method ──────────────────────────────────────────────────
-  const [loginMethod, setLoginMethod] = useState<LoginMethod>("email");
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>("phone");
 
   // ── Email login state ────────────────────────────────────────────────────
   const stateEmail = (location.state as { email?: string } | null)?.email || "";
@@ -88,9 +88,10 @@ export default function LoginPage() {
     }
   }, [user, initializing, targetPath, navigate]);
 
-  // Pre-warm auth endpoint so login is instant
+  // Pre-warm auth endpoints so login is instant
   useEffect(() => {
     try {
+      fetch("/api/auth/phone-sync", { method: "OPTIONS" }).catch(() => {});
       fetch("/api/auth/send-otp", { method: "OPTIONS" }).catch(() => {});
     } catch {}
   }, []);
@@ -122,16 +123,28 @@ export default function LoginPage() {
     navigate(targetPath === "/login" ? "/" : targetPath, { replace: true });
 
   const getTitle = () => {
-    if (loginMethod === "phone") return "Sign In with Phone";
     if (emailStep === "otp") return "Verify Your Email";
-    return "Welcome Back";
+    return "Sign In";
   };
 
   return (
     <AuthLayout title={getTitle()}>
-      {/* ── Method Tabs (only shown on main form, not during OTP steps) ── */}
+      {/* ── Single method selector — shown only on main form step ── */}
       {emailStep === "login" && (
         <div className="flex gap-2 mb-5 bg-[#F5FCF8] rounded-[14px] p-1">
+          <button
+            id="login-tab-mobile"
+            type="button"
+            onClick={() => setLoginMethod("phone")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-xs font-bold transition-all ${
+              loginMethod === "phone"
+                ? "bg-white text-[#00A651] shadow-sm border border-[#E0F5EB]"
+                : "text-[#888888] hover:text-[#00A651]"
+            }`}
+          >
+            <Smartphone size={13} />
+            Mobile
+          </button>
           <button
             id="login-tab-email"
             type="button"
@@ -145,42 +158,6 @@ export default function LoginPage() {
             <Mail size={13} />
             Email
           </button>
-          <button
-            id="login-tab-phone"
-            type="button"
-            onClick={() => setLoginMethod("phone")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-xs font-bold transition-all ${
-              loginMethod === "phone"
-                ? "bg-white text-[#00A651] shadow-sm border border-[#E0F5EB]"
-                : "text-[#888888] hover:text-[#00A651]"
-            }`}
-          >
-            <Smartphone size={13} />
-            Phone OTP
-          </button>
-        </div>
-      )}
-
-      {loginMethod === "phone" && (
-        <div className="flex gap-2 mb-5 bg-[#F5FCF8] rounded-[14px] p-1">
-          <button
-            id="login-tab-email"
-            type="button"
-            onClick={() => setLoginMethod("email")}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-xs font-bold transition-all text-[#888888] hover:text-[#00A651]"
-          >
-            <Mail size={13} />
-            Email
-          </button>
-          <button
-            id="login-tab-phone"
-            type="button"
-            onClick={() => setLoginMethod("phone")}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-xs font-bold transition-all bg-white text-[#00A651] shadow-sm border border-[#E0F5EB]"
-          >
-            <Smartphone size={13} />
-            Phone OTP
-          </button>
         </div>
       )}
 
@@ -190,7 +167,6 @@ export default function LoginPage() {
           <PhoneOtpVerification
             key="phone-otp-flow"
             onSuccess={successRedirect}
-            onBack={() => setLoginMethod("email")}
           />
         ) : emailStep === "otp" ? (
           /* ── Email OTP verification step ───────────────────────────────── */

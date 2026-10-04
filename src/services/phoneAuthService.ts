@@ -13,6 +13,8 @@
  *   5. Client calls supabase.auth.setSession(tokens) → AuthContext fires → user logged in
  */
 
+import { getSupabaseClient } from "../lib/supabase";
+
 export interface PhoneSyncInput {
   /** Firebase UID from verified credential (credential.user.uid) */
   firebaseUid: string;
@@ -82,7 +84,6 @@ async function hydrateSupabaseSession(
   refreshToken: string
 ): Promise<void> {
   try {
-    const { getSupabaseClient } = await import("../lib/supabase");
     const supabase = getSupabaseClient();
     if (!supabase) return;
     await supabase.auth.setSession({
