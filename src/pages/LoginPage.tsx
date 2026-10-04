@@ -2,13 +2,20 @@ import React, { useState, useEffect } from "react";
 import type { FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Mail, Smartphone } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { AuthField, AuthLayout } from "../components/layout/AuthLayout";
 import { EmailOtpVerification } from "../components/features/EmailOtpVerification";
+import { PhoneOtpVerification } from "../components/features/PhoneOtpVerification";
 import { loginCustomer } from "../services/authService";
 import { useAuth } from "../store/AuthContext";
 import { validatePassword, validateRequiredEmail } from "../utils/validation";
+
+// Login method tab
+type LoginMethod = "email" | "phone";
+
+// Email sub-step
+type EmailStep = "login" | "otp";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -18,13 +25,16 @@ export default function LoginPage() {
     (location.state as { from?: { pathname?: string } | string } | null)?.from;
   const targetPath = typeof from === "string" ? from : from?.pathname || "/";
 
-  // Email login state
+  // ── Active login method ──────────────────────────────────────────────────
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>("email");
+
+  // ── Email login state ────────────────────────────────────────────────────
   const stateEmail = (location.state as { email?: string } | null)?.email || "";
   const [email, setEmail] = useState(stateEmail);
   const [password, setPassword] = useState("");
   const [emailErrors, setEmailErrors] = useState<Record<string, string | undefined>>({});
   const [emailLoading, setEmailLoading] = useState(false);
-  const [emailStep, setEmailStep] = useState<"login" | "otp">("login");
+  const [emailStep, setEmailStep] = useState<EmailStep>("login");
 
   useEffect(() => {
     const sEmail = (location.state as { email?: string } | null)?.email;
@@ -108,20 +118,86 @@ export default function LoginPage() {
     navigate(targetPath === "/login" ? "/" : targetPath, { replace: true });
   };
 
+  const successRedirect = () =>
+    navigate(targetPath === "/login" ? "/" : targetPath, { replace: true });
+
   const getTitle = () => {
+    if (loginMethod === "phone") return "Sign In with Phone";
     if (emailStep === "otp") return "Verify Your Email";
     return "Welcome Back";
   };
 
   return (
     <AuthLayout title={getTitle()}>
+      {/* ── Method Tabs (only shown on main form, not during OTP steps) ── */}
+      {emailStep === "login" && loginMethod === "email" && (
+        <div className="flex gap-2 mb-5 bg-[#F5FCF8] rounded-[14px] p-1">
+          <button
+            id="login-tab-email"
+            type="button"
+            onClick={() => setLoginMethod("email")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-xs font-bold transition-all ${
+              loginMethod === "email"
+                ? "bg-white text-[#00A651] shadow-sm border border-[#E0F5EB]"
+                : "text-[#888888] hover:text-[#00A651]"
+            }`}
+          >
+            <Mail size={13} />
+            Email
+          </button>
+          <button
+            id="login-tab-phone"
+            type="button"
+            onClick={() => setLoginMethod("phone")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-xs font-bold transition-all ${
+              loginMethod === "phone"
+                ? "bg-white text-[#00A651] shadow-sm border border-[#E0F5EB]"
+                : "text-[#888888] hover:text-[#00A651]"
+            }`}
+          >
+            <Smartphone size={13} />
+            Phone OTP
+          </button>
+        </div>
+      )}
+
+      {loginMethod === "phone" && (
+        <div className="flex gap-2 mb-5 bg-[#F5FCF8] rounded-[14px] p-1">
+          <button
+            id="login-tab-email"
+            type="button"
+            onClick={() => setLoginMethod("email")}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-xs font-bold transition-all text-[#888888] hover:text-[#00A651]"
+          >
+            <Mail size={13} />
+            Email
+          </button>
+          <button
+            id="login-tab-phone"
+            type="button"
+            onClick={() => setLoginMethod("phone")}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-xs font-bold transition-all bg-white text-[#00A651] shadow-sm border border-[#E0F5EB]"
+          >
+            <Smartphone size={13} />
+            Phone OTP
+          </button>
+        </div>
+      )}
+
       <AnimatePresence mode="wait">
-        {/* Email OTP verification step */}
-        {emailStep === "otp" ? (
+        {/* ── Phone OTP flow ─────────────────────────────────────────────── */}
+        {loginMethod === "phone" ? (
+          <PhoneOtpVerification
+            key="phone-otp-flow"
+            onSuccess={successRedirect}
+            onBack={() => setLoginMethod("email")}
+          />
+        ) : emailStep === "otp" ? (
+          /* ── Email OTP verification step ───────────────────────────────── */
           <EmailOtpVerification
             key="email-otp"
             email={email}
-            onSuccess={() => navigate(targetPath === "/login" ? "/" : targetPath, { replace: true })}
+            onSuccess={successRedirect}
             onChangeEmail={() => {
               setEmailStep("login");
               setEmailErrors({});
@@ -129,7 +205,7 @@ export default function LoginPage() {
             submitButtonText="Verify & Sign In"
           />
         ) : (
-          /* Main login form */
+          /* ── Main email + password form ────────────────────────────────── */
           <motion.div
             key="main-form"
             initial={{ opacity: 0, x: -15 }}
@@ -138,7 +214,6 @@ export default function LoginPage() {
             transition={{ duration: 0.18 }}
             className="space-y-4"
           >
-            {/* Email & Password form */}
             <motion.form
               key="email-form"
               initial={{ opacity: 0 }}

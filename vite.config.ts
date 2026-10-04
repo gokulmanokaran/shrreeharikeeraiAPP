@@ -583,6 +583,127 @@ function localDevApiPlugin(): Plugin {
         }
 
 
+        // POST /api/auth/phone-sync  (local dev — mirrors api/auth/phone-sync.ts)
+        if (url.startsWith("/api/auth/phone-sync") && (req.method === "POST" || req.method === "OPTIONS")) {
+          if (req.method === "OPTIONS") { res.statusCode = 204; res.end(); return; }
+          let rawBody = "";
+          req.on("data", (chunk: any) => { rawBody += chunk; });
+          req.on("end", async () => {
+            try {
+              const body = JSON.parse(rawBody || "{}");
+              const { firebase_uid, phone_number, full_name = "" } = body;
+
+              if (!firebase_uid || !phone_number) {
+                res.statusCode = 400;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "firebase_uid and phone_number are required." }));
+                return;
+              }
+
+              const serverModUrl = pathToFileURL(path.resolve(__dirname, "api/_supabase.ts")).href;
+              const { getSupabaseServerClient } = (await import(serverModUrl)) as {
+                getSupabaseServerClient: () => any;
+              };
+              const serverClient = getSupabaseServerClient();
+              if (!serverClient) {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: "Server configuration error. Check SUPABASE_SERVICE_ROLE_KEY in .env" }));
+                return;
+              }
+
+              // Deterministic synthetic email for this phone number
+              const mobileDigits = String(phone_number).replace(/\D/g, "").slice(-10);
+              const syntheticEmail = `phone_${mobileDigits}@shreehari-phone.internal`;
+
+              // 1. Look for existing Supabase user by synthetic email
+              let supabaseUserId: string | null = null;
+              const { data: listData } = await serverClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
+              const existingAuthUser = (listData?.users || []).find(
+                (u: any) => u.email === syntheticEmail
+              );
+              if (existingAuthUser) supabaseUserId = existingAuthUser.id;
+
+              // 2. Create user if not found
+              if (!supabaseUserId) {
+                const { data: newUser, error: createErr } = await serverClient.auth.admin.createUser({
+                  email: syntheticEmail,
+                  email_confirm: true,
+                  user_metadata: { full_name, mobile: mobileDigits, firebase_uid, auth_provider: "firebase_phone" },
+                  password: Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2),
+                });
+                if (createErr || !newUser?.user) {
+                  res.statusCode = 500;
+                  res.setHeader("Content-Type", "application/json");
+                  res.end(JSON.stringify({ error: createErr?.message || "Failed to create user." }));
+                  return;
+                }
+                supabaseUserId = newUser.user.id;
+              }
+
+              // 3. Upsert profiles row (use try-catch — Supabase query builder has no .catch())
+              try {
+                await serverClient.from("profiles").upsert(
+                  { id: supabaseUserId, email: syntheticEmail, mobile: mobileDigits, full_name: full_name || "" },
+                  { onConflict: "id" }
+                );
+              } catch (upsertErr: any) {
+                console.warn("[DevAPI phone-sync] profiles upsert warn:", upsertErr?.message);
+                // non-fatal — continue to generate session
+              }
+
+              // 4. Generate magic-link token → exchange for real Supabase session tokens
+              const { data: linkData, error: linkErr } = await serverClient.auth.admin.generateLink({
+                type: "magiclink",
+                email: syntheticEmail,
+              });
+              if (linkErr || !linkData?.properties?.hashed_token) {
+                console.error("[DevAPI phone-sync] generateLink error:", linkErr?.message);
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: linkErr?.message || "Failed to generate session link." }));
+                return;
+              }
+
+              // Use the anon Supabase client (not admin) for verifyOtp — it returns a real session
+              const { createClient } = await import("@supabase/supabase-js");
+              const anonClient = createClient(
+                process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "",
+                process.env.VITE_SUPABASE_ANON_KEY || ""
+              );
+              const { data: sessionData, error: verifyErr } = await anonClient.auth.verifyOtp({
+                token_hash: linkData.properties.hashed_token,
+                type: "email",
+              });
+              if (verifyErr || !sessionData?.session) {
+                console.error("[DevAPI phone-sync] verifyOtp error:", verifyErr?.message);
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: verifyErr?.message || "Failed to create session." }));
+                return;
+              }
+
+              console.log(`[DevAPI phone-sync] ✓ ${phone_number} → supabase_id=${supabaseUserId}`);
+              res.statusCode = 200;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({
+                supabase_user_id: supabaseUserId,
+                access_token: sessionData.session.access_token,
+                refresh_token: sessionData.session.refresh_token,
+              }));
+            } catch (err: any) {
+              console.error("[DevAPI phone-sync]:", err);
+              if (!res.headersSent) {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ error: err?.message || "Internal error" }));
+              }
+            }
+          });
+          return;
+        }
+
+
         // GET /api/products
         if (url.startsWith("/api/products") && req.method === "GET") {
           const catalog = readCatalog();
