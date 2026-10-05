@@ -1,4 +1,4 @@
-import { LogOut, ExternalLink, RefreshCw, Layers, Code, Plus, ShoppingBag } from "lucide-react";
+import { LogOut, ExternalLink, RefreshCw, Layers, Code, Plus, ShoppingBag, Image } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 interface DashboardNavbarProps {
@@ -8,6 +8,7 @@ interface DashboardNavbarProps {
   onOpenApiInspector: () => void;
   onAddNewProduct: () => void;
   onOpenOrders: () => void;
+  onOpenHeroBanners: () => void;
 }
 
 export function DashboardNavbar({
@@ -17,6 +18,7 @@ export function DashboardNavbar({
   onOpenApiInspector,
   onAddNewProduct,
   onOpenOrders,
+  onOpenHeroBanners,
 }: DashboardNavbarProps) {
   const { logout } = useAuth();
 
@@ -53,6 +55,16 @@ export function DashboardNavbar({
           >
             <ShoppingBag size={15} />
             <span className="hidden xs:inline">Orders</span>
+          </button>
+
+          {/* Hero Banners Button */}
+          <button
+            onClick={onOpenHeroBanners}
+            title="Manage Home Page Hero Banners"
+            className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs sm:text-sm font-bold px-3 py-2 rounded-xl shadow-md shadow-violet-600/20 transition-all cursor-pointer"
+          >
+            <Image size={15} />
+            <span className="hidden xs:inline">Banners</span>
           </button>
 
           {/* Add Product Button */}

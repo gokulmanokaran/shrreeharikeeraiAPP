@@ -9,6 +9,7 @@ import { SafeImageModal } from "./components/SafeImageModal";
 import { CategoryModal } from "./components/CategoryModal";
 import { ApiInspectorModal } from "./components/ApiInspectorModal";
 import { OrdersModal } from "./components/OrdersModal";
+import { HeroBannersModal } from "./components/HeroBannersModal";
 import {
   fetchProducts,
   fetchCategories,
@@ -56,6 +57,7 @@ export default function App() {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isApiInspectorOpen, setIsApiInspectorOpen] = useState(false);
   const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
+  const [isHeroBannersOpen, setIsHeroBannersOpen] = useState(false);
 
   // Quick stock updating ID
   const [isUpdatingStockId, setIsUpdatingStockId] = useState<string | null>(null);
@@ -176,6 +178,7 @@ export default function App() {
         onOpenCategories={() => setIsCategoryModalOpen(true)}
         onOpenApiInspector={() => setIsApiInspectorOpen(true)}
         onOpenOrders={() => setIsOrdersModalOpen(true)}
+        onOpenHeroBanners={() => setIsHeroBannersOpen(true)}
         onAddNewProduct={() => {
           setEditingProduct(null);
           setIsFormOpen(true);
@@ -229,6 +232,12 @@ export default function App() {
       <OrdersModal
         isOpen={isOrdersModalOpen}
         onClose={() => setIsOrdersModalOpen(false)}
+      />
+
+      {/* Hero Banners Manager */}
+      <HeroBannersModal
+        isOpen={isHeroBannersOpen}
+        onClose={() => setIsHeroBannersOpen(false)}
       />
 
       {/* Edit / Create Product Modal */}
