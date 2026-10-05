@@ -7,6 +7,7 @@ import { Button } from "../components/ui/Button";
 import { AuthField } from "../components/layout/AuthLayout";
 import { updateCustomerPassword } from "../services/authService";
 import { useAuth } from "../store/AuthContext";
+import { LogOut } from "lucide-react";
 
 export default function AccountSettingsPage() {
   const navigate = useNavigate();
@@ -16,6 +17,8 @@ export default function AccountSettingsPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -33,8 +36,54 @@ export default function AccountSettingsPage() {
     setSuccess("Password updated successfully.");
   };
 
+  const handleConfirmLogout = async () => {
+    setIsLoggingOut(true);
+    await logout();
+    navigate("/", { replace: true });
+  };
+
   return (
     <>
+      {/* Logout Confirmation Dialog */}
+      {showLogoutConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+        >
+          <div className="bg-white rounded-[22px] shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-1">
+                <LogOut size={22} className="text-[#EA4335]" />
+              </div>
+              <h2 className="text-base font-black text-[#111111]">Logout Confirmation</h2>
+              <p className="text-sm text-[#555555] leading-relaxed">
+                Are you sure you want to logout?
+              </p>
+            </div>
+            <div className="flex flex-col gap-2.5 mt-1">
+              <button
+                id="settings-confirm-logout-btn"
+                type="button"
+                disabled={isLoggingOut}
+                onClick={handleConfirmLogout}
+                className="w-full py-3 rounded-[14px] bg-[#EA4335] text-white text-sm font-bold hover:bg-[#d33426] active:scale-[0.98] transition-all disabled:opacity-60 cursor-pointer"
+              >
+                {isLoggingOut ? "Logging out…" : "Confirm Logout"}
+              </button>
+              <button
+                id="settings-cancel-logout-btn"
+                type="button"
+                disabled={isLoggingOut}
+                onClick={() => setShowLogoutConfirm(false)}
+                className="w-full py-3 rounded-[14px] bg-[#F5F5F5] text-[#333333] text-sm font-bold hover:bg-[#EAEAEA] active:scale-[0.98] transition-all disabled:opacity-60 cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Header onSearchOpen={() => navigate("/search")} />
       <main className="pb-24 max-w-lg mx-auto px-4 pt-5">
         <h1 className="text-xl font-black text-[#111111] mb-1">Account Settings</h1>
@@ -75,10 +124,7 @@ export default function AccountSettingsPage() {
           variant="danger"
           size="lg"
           fullWidth
-          onClick={async () => {
-            await logout();
-            navigate("/", { replace: true });
-          }}
+          onClick={() => setShowLogoutConfirm(true)}
         >
           Logout
         </Button>

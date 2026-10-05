@@ -21,7 +21,7 @@ interface HeaderProps {
 
 export function Header({ onSearchOpen }: HeaderProps) {
   const { itemCount } = useCart();
-  const { savedLocation, locationLabel, pincode, saveLocation } = useDelivery();
+  const { savedLocation, pincode, saveLocation } = useDelivery();
   const navigate = useNavigate();
 
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -69,12 +69,12 @@ export function Header({ onSearchOpen }: HeaderProps) {
               whileTap={{ scale: 0.96 }}
               onClick={() => setShowMapPicker(true)}
               id="header-set-area-btn"
-              className="flex items-center gap-1 bg-[#EAF8F0] px-2.5 py-1.5 rounded-full mr-1 cursor-pointer max-w-[140px] sm:max-w-[200px]"
+              className="flex items-center gap-1 bg-[#EAF8F0] px-2.5 py-1.5 rounded-full mr-1 cursor-pointer"
               aria-label="Set or change delivery location"
             >
               <MapPin size={12} className="text-[#00A651] shrink-0" />
-              <span className="text-xs font-bold text-[#00A651] truncate">
-                {locationLabel || (pincode ? `Coimbatore - ${pincode}` : "Set Area")}
+              <span className="text-xs font-bold text-[#00A651]">
+                {pincode || "Set Area"}
               </span>
               <ChevronDown size={10} className="text-[#00A651] shrink-0" />
             </motion.button>

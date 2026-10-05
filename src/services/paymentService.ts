@@ -182,12 +182,12 @@ export function loadRazorpayScript(): Promise<boolean> {
 /**
  * Server-side Razorpay Order Creator (creates official order_... on Razorpay server with strict validation)
  */
-async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<{ orderId?: string; validatedAmount?: number; error?: string } | undefined> {
+async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<{ orderId?: string; validatedAmount?: number; configured?: boolean; error?: string } | undefined> {
   if (typeof window === "undefined") return undefined;
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     const res = await fetch("/api/create-razorpay-order", {
       method: "POST",
@@ -213,16 +213,24 @@ async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<{ or
       const data = await res.json();
       if (data.orderId) {
         console.info(`[PaymentService] ✅ Created Razorpay server order: ${data.orderId} (₹${data.validatedAmount || payload.amount})`);
-        return { orderId: data.orderId, validatedAmount: data.validatedAmount };
+        return { orderId: data.orderId, validatedAmount: data.validatedAmount, configured: true };
       }
+      // configured: false means RAZORPAY_KEY_SECRET not set in env (dev environment without secrets)
+      // Allow Checkout to proceed in this case so developers can test locally
+      if (data.configured === false) {
+        console.warn("[PaymentService] ⚠️ Razorpay backend not configured (RAZORPAY_KEY_SECRET missing). Opening checkout without order_id — auto-capture will not work.");
+        return { configured: false, validatedAmount: data.validatedAmount };
+      }
+      // API returned OK but no orderId and configured is not explicitly false — block checkout
+      return { error: data.error || "Payment order creation failed — no Razorpay order ID returned." };
     } else {
       const errData = await res.json().catch(() => ({}));
       return { error: errData.error || "Payment order creation failed." };
     }
   } catch (e) {
-    console.warn("[PaymentService] Server-side Razorpay order creation notice:", e);
+    console.warn("[PaymentService] Server-side Razorpay order creation error:", e);
+    return { error: "Unable to create payment order. Please check your connection and retry." };
   }
-  return undefined;
 }
 
 /**
@@ -245,16 +253,28 @@ export async function processPayment(payload: PaymentPayload): Promise<PaymentRe
     };
   }
 
-  // Attempt backend order generation with notes & validation
+  // MANDATORY: Create a Razorpay Order on the backend before opening Checkout.
+  // This ensures payment_capture: 1 is set, which triggers auto-capture after payment.
+  // If order creation fails AND the backend is configured (has RAZORPAY_KEY_SECRET), we block
+  // Checkout entirely — a payment without an order_id would stay as "authorized" (not captured).
   const backendResult = await createBackendRazorpayOrder(payload);
-  if (backendResult?.error) {
+  if (!backendResult) {
+    // Unexpected undefined — network error or unhandled exception
+    return {
+      success: false,
+      error: "Payment gateway is temporarily unavailable. Please try again in a moment.",
+    };
+  }
+  if (backendResult.error) {
     return {
       success: false,
       error: backendResult.error,
     };
   }
-  const backendOrderId = backendResult?.orderId;
-  const paymentAmount = backendResult?.validatedAmount ?? payload.amount;
+  // backendResult.configured === false means dev env without RAZORPAY_KEY_SECRET
+  // In that case we allow proceeding without order_id for local testing only
+  const backendOrderId = backendResult.orderId;
+  const paymentAmount = backendResult.validatedAmount ?? payload.amount;
 
   const androidWebView = isAndroidWebView();
 

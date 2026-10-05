@@ -5,14 +5,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   UserRound,
   Package,
-  LogOut,
   ChevronRight,
   Sparkles,
 } from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
 
 export function UserAccountMenu() {
-  const { profile, user, logout } = useAuth();
+  const { profile, user } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -142,21 +141,7 @@ export function UserAccountMenu() {
                   />
                 </div>
 
-                <div className="my-1 border-t border-gray-100" />
 
-                {/* Logout Button */}
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setOpen(false);
-                    await logout();
-                    navigate("/", { replace: true });
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-bold text-[#EA4335] hover:bg-red-50 rounded-[12px] transition-colors cursor-pointer"
-                >
-                  <LogOut size={16} />
-                  <span>Sign Out</span>
-                </button>
               </>
             )}
           </motion.div>

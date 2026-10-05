@@ -769,15 +769,15 @@ function localDevApiPlugin(): Plugin {
             try {
               let handlerMod: any;
               if (url.startsWith("/api/create-razorpay-order")) {
-                handlerMod = await import(pathToFileURL(path.resolve(__dirname, "api/create-razorpay-order.ts")).href);
+                handlerMod = await server.ssrLoadModule(path.resolve(__dirname, "api/create-razorpay-order.ts"));
               } else if (url.startsWith("/api/verify-razorpay-payment")) {
-                handlerMod = await import(pathToFileURL(path.resolve(__dirname, "api/verify-razorpay-payment.ts")).href);
+                handlerMod = await server.ssrLoadModule(path.resolve(__dirname, "api/_verify-razorpay-payment.ts"));
               } else if (url.startsWith("/api/process-payment")) {
-                handlerMod = await import(pathToFileURL(path.resolve(__dirname, "api/process-payment.ts")).href);
+                handlerMod = await server.ssrLoadModule(path.resolve(__dirname, "api/process-payment.ts"));
               } else if (url.startsWith("/api/order-webhook")) {
-                handlerMod = await import(pathToFileURL(path.resolve(__dirname, "api/order-webhook.ts")).href);
+                handlerMod = await server.ssrLoadModule(path.resolve(__dirname, "api/order-webhook.ts"));
               } else if (url.startsWith("/api/razorpay-webhook")) {
-                handlerMod = await import(pathToFileURL(path.resolve(__dirname, "api/razorpay-webhook.ts")).href);
+                handlerMod = await server.ssrLoadModule(path.resolve(__dirname, "api/razorpay-webhook.ts"));
               }
 
               if (handlerMod?.default) {
