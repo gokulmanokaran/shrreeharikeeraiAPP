@@ -6,6 +6,7 @@ import { Button } from "../components/ui/Button";
 import { useAuth } from "../store/AuthContext";
 import { getSupabaseClient } from "../lib/supabase";
 import { Package, MapPin } from "lucide-react";
+import { SkeletonOrdersList } from "../components/ui/SkeletonLoader";
 
 interface OrderRow {
   id: string;
@@ -130,9 +131,7 @@ export default function OrdersPage() {
         <p className="text-sm text-[#666666] mb-5">Orders placed with this account.</p>
 
         {loading || initializing ? (
-          <div className="flex justify-center py-16">
-            <div className="w-10 h-10 rounded-full border-3 border-[#EAF8F0] border-t-[#00A651] animate-spin" />
-          </div>
+          <SkeletonOrdersList count={3} />
         ) : !userId && !email ? (
           <div className="bg-white rounded-[20px] border border-[#EAEAEA] p-8 text-center">
             <Package size={32} className="mx-auto text-[#00A651] mb-3" />

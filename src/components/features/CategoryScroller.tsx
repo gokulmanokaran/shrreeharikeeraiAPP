@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { ProductCategory } from "../../data/products";
 import { useProductCatalog } from "../../store/ProductContext";
+import { SkeletonBox } from "../ui/SkeletonLoader";
 
 interface CategoryScrollerProps {
   activeCategory?: ProductCategory | "all";
@@ -15,7 +16,7 @@ export function CategoryScroller({
   mode = "home",
 }: CategoryScrollerProps) {
   const navigate = useNavigate();
-  const { categories } = useProductCatalog();
+  const { categories, isSyncing } = useProductCatalog();
 
   const handleClick = (id: string) => {
     if (onSelect) {
@@ -71,6 +72,27 @@ export function CategoryScroller({
   }
 
   // Home mode: 3-per-row big size clean UI category grid with original icons
+
+  // Show shimmer placeholders while categories are being fetched for the first time
+  if (isSyncing && categories.length === 0) {
+    return (
+      <section aria-label="Shop by category" className="py-2">
+        <div className="px-1 mb-3.5">
+          <div className="h-5 shimmer rounded-full w-40 mb-1" />
+          <div className="h-3 shimmer rounded-full w-52" />
+        </div>
+        <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-3.5 px-0.5">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <SkeletonBox
+              key={i}
+              className="rounded-[20px] aspect-[1/1.12]"
+            />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section aria-label="Shop by category" className="py-2">
       <div className="px-1 mb-3.5 flex items-center justify-between">
