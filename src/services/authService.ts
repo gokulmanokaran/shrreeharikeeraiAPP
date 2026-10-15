@@ -514,11 +514,22 @@ export async function updateCustomerProfile(input: {
   fullName: string;
   email: string;
   mobile?: string;
+  /**
+   * Set to true when the user authenticated via mobile/phone OTP (Firebase Phone Auth).
+   * This prevents overwriting the synthetic internal auth email used as the login identity.
+   * The real contact email is still persisted to the profiles table normally.
+   */
+  isPhoneLogin?: boolean;
 }): Promise<{ error?: string }> {
   const nameErr = validateName(input.fullName);
   if (nameErr) return { error: nameErr };
-  const emailErr = validateRequiredEmail(input.email);
-  if (emailErr) return { error: emailErr };
+
+  // For phone-login users the email field is optional (it's a new contact email being added).
+  // For email-login users it is required (it's the login identity and must remain valid).
+  if (!input.isPhoneLogin) {
+    const emailErr = validateRequiredEmail(input.email);
+    if (emailErr) return { error: emailErr };
+  }
 
   const fullName = input.fullName.trim();
   const email = input.email.trim().toLowerCase();
@@ -533,11 +544,15 @@ export async function updateCustomerProfile(input: {
     return { error: "Please log in again to update your profile." };
   }
 
-  // 1. Update auth user metadata (full_name stored in user_metadata)
+  // 1. Update auth user metadata (full_name stored in user_metadata).
+  //    For phone-login users: NEVER update auth.email — it is a synthetic internal
+  //    address used as the Supabase login identity and must not be changed.
+  //    For email-login users: update auth.email only when it has actually changed
+  //    (Supabase will send a confirmation if email change is requested).
   const authPayload: { email?: string; data: { full_name: string; mobile?: string } } = {
     data: { full_name: fullName, mobile },
   };
-  if (email && email !== (user.email || "").toLowerCase()) {
+  if (!input.isPhoneLogin && email && email !== (user.email || "").toLowerCase()) {
     authPayload.email = email;
   }
   try {
@@ -550,7 +565,9 @@ export async function updateCustomerProfile(input: {
     console.warn("[updateCustomerProfile] auth.updateUser exception:", e);
   }
 
-  // 2. Upsert profiles table row
+  // 2. Upsert profiles table row.
+  //    For phone-login users: email here is the new real contact email being added.
+  //    For email-login users: mobile is the additional contact number.
   const profileResult = await upsertProfile({
     id: user.id,
     fullName,

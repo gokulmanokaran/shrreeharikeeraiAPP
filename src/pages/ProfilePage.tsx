@@ -6,7 +6,19 @@ import { Button } from "../components/ui/Button";
 import { useAuth } from "../store/AuthContext";
 import { useDelivery } from "../store/DeliveryContext";
 import { MapLocationPicker } from "../components/features/MapLocationPicker";
-import { Mail, Phone, UserRound, LogOut, Pencil, MapPin } from "lucide-react";
+import { Mail, Phone, UserRound, LogOut, Pencil, MapPin, Lock } from "lucide-react";
+
+/**
+ * Returns true when the authenticated user logged in via Firebase Phone Auth.
+ * Phone-login users have a synthetic Supabase email ending in @shreehari-phone.internal
+ * and/or auth_provider = "firebase_phone" in their user_metadata.
+ */
+function detectPhoneLogin(user: { email?: string | null; user_metadata?: Record<string, unknown> } | null): boolean {
+  if (!user) return false;
+  if (user.user_metadata?.auth_provider === "firebase_phone") return true;
+  if (user.email?.endsWith("@shreehari-phone.internal")) return true;
+  return false;
+}
 
 export default function ProfilePage() {
   const { profile, user, logout } = useAuth();
@@ -17,8 +29,12 @@ export default function ProfilePage() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
+  const isPhoneLogin = detectPhoneLogin(user);
+
   const fullName = profile?.fullName || String(user?.user_metadata?.full_name || "");
-  const email = profile?.email || user?.email || "";
+  // For phone-login users, hide the synthetic internal email and show only a real contact email if set
+  const rawEmail = profile?.email || user?.email || "";
+  const email = isPhoneLogin && rawEmail.endsWith("@shreehari-phone.internal") ? "" : rawEmail;
   const mobile = profile?.mobile || String(user?.user_metadata?.mobile || "");
 
   const userInitial = (
@@ -123,15 +139,31 @@ export default function ProfilePage() {
             </div>
             <div className="flex items-start gap-3.5">
               <Mail size={18} className="text-[#00A651] mt-0.5 shrink-0" />
-              <div>
-                <p className="text-[11px] font-bold text-[#888888] uppercase tracking-wide">Email</p>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-[11px] font-bold text-[#888888] uppercase tracking-wide">Email</p>
+                  {!isPhoneLogin && (
+                    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                      <Lock size={8} />
+                      Login ID
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm font-semibold text-[#111111] break-all">{email || "—"}</p>
               </div>
             </div>
             <div className="flex items-start gap-3.5">
               <Phone size={18} className="text-[#00A651] mt-0.5 shrink-0" />
-              <div>
-                <p className="text-[11px] font-bold text-[#888888] uppercase tracking-wide">Mobile Number</p>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-[11px] font-bold text-[#888888] uppercase tracking-wide">Mobile Number</p>
+                  {isPhoneLogin && (
+                    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                      <Lock size={8} />
+                      Login ID
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm font-semibold text-[#111111]">{mobile ? `+91 ${mobile}` : "—"}</p>
               </div>
             </div>
