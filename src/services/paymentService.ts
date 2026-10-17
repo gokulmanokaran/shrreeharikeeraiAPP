@@ -37,6 +37,11 @@ export interface PaymentPayload {
   userId?: string;
   preferredMethod?: string;
   pincode?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  subtotal?: number;
+  deliveryCharge?: number;
   items?: OrderItem[];
   onPaymentFailed?: (errorMsg: string) => void;
 }
@@ -201,8 +206,12 @@ async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<{ or
         notes: {
           storefrontOrderId: payload.orderId,
           userId: payload.userId || "",
+          customerName: payload.customerName || "",
           customerEmail: payload.customerEmail || "",
           customerPhone: payload.customerPhone || "",
+          address: payload.address || "",
+          city: payload.city || "",
+          state: payload.state || "",
           pincode: payload.pincode || "",
         },
       }),
@@ -298,8 +307,10 @@ export async function processPayment(payload: PaymentPayload): Promise<PaymentRe
       notes: {
         storefrontOrderId: payload.orderId,
         userId: payload.userId || "",
+        customerName: payload.customerName || "",
         customerEmail: payload.customerEmail || "",
         customerPhone: payload.customerPhone || "",
+        address: (payload.address || "").slice(0, 200),
         paymentMethod: payload.preferredMethod || "upi",
       },
       theme: {

@@ -205,8 +205,17 @@ export default async function handler(req: any, res?: any): Promise<any> {
       if (storefrontOrderId) {
         const { data: orderRow } = await supabase
           .from("orders")
-          .select("id, user_id, sheets_synced, email_sent, full_name, mobile, email, address, city, state, pincode, lat, lng, maps_link, items, subtotal, delivery_charge, discount, total, payment_status, retry_count")
+          .select("id, user_id, sheets_synced, email_sent, full_name, mobile, email, address, city, state, pincode, lat, lng, maps_link, items, subtotal, delivery_charge, discount, total, payment_status, retry_count, source")
           .eq("id", storefrontOrderId)
+          .maybeSingle();
+        if (orderRow) existingOrder = orderRow;
+      }
+
+      if (!existingOrder && razorpayOrderId) {
+        const { data: orderRow } = await supabase
+          .from("orders")
+          .select("id, user_id, sheets_synced, email_sent, full_name, mobile, email, address, city, state, pincode, lat, lng, maps_link, items, subtotal, delivery_charge, discount, total, payment_status, retry_count, source")
+          .eq("razorpay_order_id", razorpayOrderId)
           .maybeSingle();
         if (orderRow) existingOrder = orderRow;
       }
@@ -214,24 +223,26 @@ export default async function handler(req: any, res?: any): Promise<any> {
       if (!existingOrder && razorpayPaymentId) {
         const { data: orderRow } = await supabase
           .from("orders")
-          .select("id, user_id, sheets_synced, email_sent, full_name, mobile, email, address, city, state, pincode, lat, lng, maps_link, items, subtotal, delivery_charge, discount, total, payment_status, retry_count")
+          .select("id, user_id, sheets_synced, email_sent, full_name, mobile, email, address, city, state, pincode, lat, lng, maps_link, items, subtotal, delivery_charge, discount, total, payment_status, retry_count, source")
           .eq("razorpay_payment_id", razorpayPaymentId)
           .maybeSingle();
         if (orderRow) existingOrder = orderRow;
       }
 
       if (existingOrder) {
+        const existingItems = Array.isArray(existingOrder.items) ? existingOrder.items : [];
+        const hasRealItems = existingItems.length > 0 && existingOrder.source !== "razorpay-webhook-fallback";
         const isPaid = String(existingOrder.payment_status || "").toLowerCase().includes("paid");
-        alreadyPaidAndSynced = isPaid && existingOrder.sheets_synced && existingOrder.email_sent;
+        alreadyPaidAndSynced = isPaid && existingOrder.sheets_synced && existingOrder.email_sent && hasRealItems;
       }
     } catch (err) {
       console.warn("[razorpay-webhook] Supabase lookup error:", err);
     }
   }
 
-  // If order is already fully processed and synced — acknowledge and return
+  // If order is already fully processed, has real items, and synced — acknowledge and return
   if (alreadyPaidAndSynced) {
-    console.info(`[razorpay-webhook] ℹ️ Order ${storefrontOrderId || existingOrder?.id} already fully processed. Idempotent response.`);
+    console.info(`[razorpay-webhook] ℹ️ Order ${storefrontOrderId || existingOrder?.id} already fully processed with items. Idempotent response.`);
     return sendApiResponse(res, 200, {
       received: true,
       event: eventType,
@@ -393,7 +404,9 @@ export default async function handler(req: any, res?: any): Promise<any> {
       orderId: fallbackOrderId,
       fullName: sanitizeString(paymentEntity.notes?.customerName || notes.fullName || "Customer", 100),
       mobile: sanitizeString(paymentEntity.contact?.replace("+91", "") || "", 15),
-      email: customerEmail,
+      // Leave customer email empty in fallback payload to prevent GAS from emailing the customer an empty order receipt
+      email: "",
+      customerEmail: customerEmail, // keep reference for notes
       address: sanitizeString(notes.address || "See Razorpay Dashboard", 300),
       total: amountInRupees,
       subtotal: amountInRupees,
@@ -425,7 +438,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
             razorpay_order_id: razorpayOrderId,
             full_name: gasPayload.fullName as string,
             mobile: gasPayload.mobile as string,
-            email: gasPayload.email as string,
+            email: customerEmail,
             address: gasPayload.address as string,
             subtotal: amountInRupees,
             delivery_charge: 0,
@@ -452,6 +465,7 @@ export default async function handler(req: any, res?: any): Promise<any> {
   if (supabase && finalOrderId) {
     const targetId = finalOrderId;
     const currentRetryCount = existingOrder?.retry_count || 0;
+    const hasRealItems = existingOrder && Array.isArray(existingOrder.items) && existingOrder.items.length > 0;
     try {
       await supabase
         .from("orders")
@@ -459,7 +473,8 @@ export default async function handler(req: any, res?: any): Promise<any> {
           razorpay_payment_id: razorpayPaymentId,
           razorpay_order_id: razorpayOrderId,
           sheets_synced: gasResult.sheetUpdated || gasResult.success,
-          email_sent: gasResult.emailSent || gasResult.success,
+          // Only mark email_sent true if real items existed and email was actually sent
+          email_sent: hasRealItems ? Boolean(gasResult.emailSent || gasResult.success) : false,
           retry_count: currentRetryCount + gasResult.attempts,
           last_error: gasResult.success ? null : (gasResult.lastError ?? null),
           last_attempt_at: new Date().toISOString(),

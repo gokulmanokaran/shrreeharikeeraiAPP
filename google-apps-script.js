@@ -39,6 +39,15 @@ function doPost(e) {
 
     var data = JSON.parse(e.postData.contents);
 
+    // Normalize items to array if serialized as string
+    if (data && typeof data.items === "string") {
+      try {
+        data.items = JSON.parse(data.items);
+      } catch (parseItemsErr) {
+        data.items = [];
+      }
+    }
+
     // ── 0. OTP EMAIL DISPATCH (No Sheet update needed) ─────────────────────
     if (data.action === "send_otp") {
       var otpRecipient = (data.email || "").trim();
@@ -362,22 +371,28 @@ function sendAdminOrderEmail(data) {
 
   // Build Ordered Items HTML Rows
   var itemsHtml = "";
-  if (data.items && data.items.length) {
-    for (var i = 0; i < data.items.length; i++) {
-      var item = data.items[i];
+  var items = data.items;
+  if (typeof items === "string") {
+    try { items = JSON.parse(items); } catch(e) { items = []; }
+  }
+  if (items && Array.isArray(items) && items.length) {
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
       var tamilName = item.nameTamil ? ' <span style="color:#00A651; font-size:12px;">(' + item.nameTamil + ')</span>' : '';
-      var itemTotal = (item.price || 0) * (item.quantity || 1);
+      var unitPrice = Number(item.price || 0);
+      var qty = Number(item.quantity || 1);
+      var itemTotal = unitPrice * qty;
 
       itemsHtml += '<tr>' +
         '<td style="padding:10px 12px; border-bottom:1px solid #EEEEEE; font-size:13px; color:#222222;">' +
-        '<strong>' + item.name + '</strong>' + tamilName +
+        '<strong>' + (item.name || "Item") + '</strong>' + tamilName +
         (item.unit ? '<div style="font-size:11px; color:#888888;">' + item.unit + '</div>' : '') +
         '</td>' +
         '<td style="padding:10px 12px; border-bottom:1px solid #EEEEEE; font-size:13px; color:#444444; text-align:center;">' +
-        item.quantity +
+        qty +
         '</td>' +
         '<td style="padding:10px 12px; border-bottom:1px solid #EEEEEE; font-size:13px; color:#444444; text-align:right;">' +
-        '₹' + item.price +
+        '₹' + unitPrice +
         '</td>' +
         '<td style="padding:10px 12px; border-bottom:1px solid #EEEEEE; font-size:13px; font-weight:bold; color:#111111; text-align:right;">' +
         '₹' + itemTotal +
@@ -591,22 +606,28 @@ function sendCustomerOrderEmail(data) {
 
   // Build Ordered Items HTML Rows for Customer
   var itemsHtml = "";
-  if (data.items && data.items.length) {
-    for (var i = 0; i < data.items.length; i++) {
-      var item = data.items[i];
+  var items = data.items;
+  if (typeof items === "string") {
+    try { items = JSON.parse(items); } catch(e) { items = []; }
+  }
+  if (items && Array.isArray(items) && items.length) {
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
       var tamilName = item.nameTamil ? ' <span style="color:#00A651; font-size:12px;">(' + item.nameTamil + ')</span>' : '';
-      var itemTotal = (item.price || 0) * (item.quantity || 1);
+      var unitPrice = Number(item.price || 0);
+      var qty = Number(item.quantity || 1);
+      var itemTotal = unitPrice * qty;
 
       itemsHtml += '<tr>' +
         '<td style="padding:12px 14px; border-bottom:1px solid #EEEEEE; font-size:13px; color:#222222; text-align:left;">' +
-        '<strong style="color:#111111;">' + item.name + '</strong>' + tamilName +
+        '<strong style="color:#111111;">' + (item.name || "Item") + '</strong>' + tamilName +
         (item.unit ? '<div style="font-size:11px; color:#777777; margin-top:2px;">' + item.unit + '</div>' : '') +
         '</td>' +
         '<td style="padding:12px 14px; border-bottom:1px solid #EEEEEE; font-size:13px; color:#444444; text-align:center;">' +
-        item.quantity +
+        qty +
         '</td>' +
         '<td style="padding:12px 14px; border-bottom:1px solid #EEEEEE; font-size:13px; color:#444444; text-align:right;">' +
-        '₹' + item.price +
+        '₹' + unitPrice +
         '</td>' +
         '<td style="padding:12px 14px; border-bottom:1px solid #EEEEEE; font-size:13px; font-weight:bold; color:#00A651; text-align:right;">' +
         '₹' + itemTotal +

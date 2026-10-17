@@ -213,16 +213,19 @@ async function upsertOrderToSupabase(
   try {
     const { data: existingById } = await supabase
       .from("orders")
-      .select("id, user_id, payment_status, sheets_synced, email_sent, retry_count")
+      .select("id, user_id, payment_status, sheets_synced, email_sent, retry_count, items, source, address")
       .eq("id", assignedOrderId)
       .maybeSingle();
 
     if (existingById) {
       existingOrderRow = existingById;
       const isPaid = String(existingById.payment_status || "").toLowerCase().includes("paid");
-      if (isPaid && existingById.sheets_synced && existingById.email_sent) {
+      const existingItems = Array.isArray(existingById.items) ? existingById.items : [];
+      const hasRealItems = existingItems.length > 0 && existingById.source !== "razorpay-webhook-fallback" && existingById.address !== "See Razorpay Dashboard";
+
+      if (isPaid && existingById.sheets_synced && existingById.email_sent && hasRealItems) {
         console.info(
-          `[process-payment] ℹ️ Order ${assignedOrderId} already exists in DB and is fully synced. Skipping duplicate notification.`
+          `[process-payment] ℹ️ Order ${assignedOrderId} already exists in DB with complete items and is fully synced. Skipping duplicate notification.`
         );
         return { alreadyProcessed: true, existingOrder: existingById, finalOrderId: assignedOrderId };
       }
@@ -231,19 +234,22 @@ async function upsertOrderToSupabase(
     if (paymentId && paymentId !== "N/A") {
       const { data: existingByPayment } = await supabase
         .from("orders")
-        .select("id, user_id, payment_status, sheets_synced, email_sent, retry_count")
+        .select("id, user_id, payment_status, sheets_synced, email_sent, retry_count, items, source, address")
         .eq("razorpay_payment_id", paymentId)
         .maybeSingle();
 
       if (existingByPayment) {
         const isPaid = String(existingByPayment.payment_status || "").toLowerCase().includes("paid");
-        if (isPaid && existingByPayment.sheets_synced && existingByPayment.email_sent) {
+        const existingItems = Array.isArray(existingByPayment.items) ? existingByPayment.items : [];
+        const hasRealItems = existingItems.length > 0 && existingByPayment.source !== "razorpay-webhook-fallback" && existingByPayment.address !== "See Razorpay Dashboard";
+
+        if (isPaid && existingByPayment.sheets_synced && existingByPayment.email_sent && hasRealItems) {
           console.info(
-            `[process-payment] ℹ️ Payment ${paymentId} was already processed under order ${existingByPayment.id} and is fully synced. Skipping duplicate.`
+            `[process-payment] ℹ️ Payment ${paymentId} was already processed under order ${existingByPayment.id} with items and is fully synced. Skipping duplicate.`
           );
           return { alreadyProcessed: true, existingOrder: existingByPayment, finalOrderId: existingByPayment.id };
         }
-        if (existingByPayment.id && /^SHK-?\d+$/i.test(existingByPayment.id)) {
+        if (existingByPayment.id && /^SHK/i.test(existingByPayment.id)) {
           existingOrderRow = existingByPayment;
           assignedOrderId = existingByPayment.id;
         }

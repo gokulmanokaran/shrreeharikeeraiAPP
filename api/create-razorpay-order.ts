@@ -11,6 +11,7 @@ import {
   SERVER_UNSUPPORTED_PINCODE_MESSAGE,
   getCloudProducts,
 } from "./_catalog.js";
+import { getSupabaseServerClient } from "./_supabase.js";
 
 export default async function handler(req: any, res?: any): Promise<any> {
   if (handleCors(req, res)) {
@@ -34,9 +35,10 @@ export default async function handler(req: any, res?: any): Promise<any> {
       });
     }
 
-    // ── 2. Server-side Subtotal Calculation ─────────────────────────────────
+    // ── 2. Server-side Subtotal Calculation & Item Enrichment ───────────────
     let subtotal = 0;
     const rawItems = Array.isArray(items) ? items : [];
+    const validatedItems: any[] = [];
 
     if (rawItems.length > 0) {
       try {
@@ -58,6 +60,14 @@ export default async function handler(req: any, res?: any): Promise<any> {
           const qty = Math.max(1, Number(rawItem.quantity) || 1);
           const unitPrice = catProduct ? Number(catProduct.price) : Math.max(0, Number(rawItem.price) || 0);
           subtotal += unitPrice * qty;
+          validatedItems.push({
+            id: itemId || undefined,
+            name: String(catProduct?.name || rawItem.name || "Product").trim(),
+            nameTamil: String(catProduct?.nameTamil || catProduct?.tamilName || rawItem.nameTamil || "").trim(),
+            quantity: qty,
+            price: unitPrice,
+            unit: String(catProduct?.unit || rawItem.unit || "1 Pack").trim(),
+          });
         }
       } catch (err) {
         console.warn("[create-razorpay-order] Catalog lookup fallback:", err);
@@ -128,6 +138,40 @@ export default async function handler(req: any, res?: any): Promise<any> {
     }
 
     const orderData = (await razorpayResponse.json()) as any;
+
+    // ── 5. Pre-persist Order to Supabase ──────────────────────────────────────
+    // Crucial safety guarantee: Save the order with all items before customer completes payment.
+    // When Razorpay webhook receives payment.captured, it immediately finds the full order with items.
+    const supabase = getSupabaseServerClient();
+    if (supabase && receipt) {
+      try {
+        const orderItemsToSave = validatedItems.length > 0 ? validatedItems : rawItems;
+        await supabase.from("orders").upsert({
+          id: String(receipt),
+          razorpay_order_id: orderData.id,
+          user_id: notes?.userId || null,
+          full_name: notes?.customerName || "Customer",
+          mobile: notes?.customerPhone || "",
+          email: notes?.customerEmail || "",
+          address: notes?.address || "",
+          city: notes?.city || "",
+          state: notes?.state || "",
+          pincode: effectivePincode,
+          subtotal,
+          delivery_charge: deliveryCharge,
+          discount: 0,
+          total: finalTotal,
+          items: orderItemsToSave,
+          payment_status: "Payment Initiated",
+          sheets_synced: false,
+          email_sent: false,
+          source: "storefront",
+        }, { onConflict: "id" });
+        console.info(`[create-razorpay-order] ⚡ Pre-persisted order ${receipt} to Supabase with ${orderItemsToSave.length} item(s).`);
+      } catch (dbErr) {
+        console.warn("[create-razorpay-order] Supabase pre-save notice:", dbErr);
+      }
+    }
 
     return sendApiResponse(res, 200, {
       configured: true,

@@ -86,12 +86,13 @@ export default async function handler(req: any, res?: any): Promise<any> {
       try {
         const { data: existing } = await supabase
           .from("orders")
-          .select("id, sheets_synced, email_sent")
+          .select("id, sheets_synced, email_sent, items, source, address")
           .eq("id", orderId)
           .maybeSingle();
 
-        if (existing?.sheets_synced && existing?.email_sent) {
-          console.info(`[order-webhook] ℹ️ Order ${orderId} already processed — skipping duplicate.`);
+        const hasRealItems = Array.isArray(existing?.items) && existing.items.length > 0 && existing.source !== "razorpay-webhook-fallback" && existing.address !== "See Razorpay Dashboard";
+        if (existing?.sheets_synced && existing?.email_sent && hasRealItems) {
+          console.info(`[order-webhook] ℹ️ Order ${orderId} already processed with items — skipping duplicate.`);
           return sendApiResponse(res, 200, {
             success: true,
             orderId,

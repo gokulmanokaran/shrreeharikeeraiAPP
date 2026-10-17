@@ -250,6 +250,11 @@ export default function PaymentPage() {
         customerName: fullName,
         customerEmail: email || user?.email || undefined,
         customerPhone: mobile,
+        address: activeOrder.address,
+        city: activeOrder.city,
+        state: activeOrder.state,
+        subtotal: activeOrder.subtotal,
+        deliveryCharge: activeOrder.deliveryCharge,
         description: `Shree Hari Keerai — Order #${sessionOrderId}`,
         userId: currentUserId,
         preferredMethod: methodInfo.rzpMethod,
@@ -336,6 +341,32 @@ export default function PaymentPage() {
         sessionStorage.removeItem(PENDING_ORDER_KEY);
         localStorage.removeItem(PENDING_ORDER_KEY);
       } catch { /* ignore */ }
+
+      // ── Cache order locally for instantaneous Order History page display ───────
+      try {
+        const rawExisting = localStorage.getItem("shreehari_orders");
+        const existingList: any[] = rawExisting ? JSON.parse(rawExisting) : [];
+        const filteredList = Array.isArray(existingList)
+          ? existingList.filter((x: any) => (x.id || x.orderId) !== confirmedOrderId)
+          : [];
+        filteredList.unshift({
+          id: confirmedOrderId,
+          createdAt: finalizedOrder.createdAt || new Date().toISOString(),
+          total: finalizedOrder.total,
+          subtotal: finalizedOrder.subtotal,
+          deliveryCharge: finalizedOrder.deliveryCharge,
+          discount: finalizedOrder.discount,
+          paymentStatus: finalizedOrder.paymentStatus,
+          items: finalizedOrder.items,
+          address: finalizedOrder.address,
+          city: finalizedOrder.city,
+          state: finalizedOrder.state,
+          pincode: finalizedOrder.pincode,
+          email: finalizedOrder.email,
+          userId: finalizedOrder.userId,
+        });
+        localStorage.setItem("shreehari_orders", JSON.stringify(filteredList.slice(0, 50)));
+      } catch { /* ignore storage issues */ }
 
       // ── Show Success Modal immediately (No separate confirmation page redirect) ─
       clearCart();
