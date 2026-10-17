@@ -110,7 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Generate secure recovery link using admin client (no Supabase SMTP needed)
-  const fallbackRedirect = process.env.VITE_SITE_URL ? `${process.env.VITE_SITE_URL}/reset-password` : "https://shrreeharikeerai-app.vercel.app/reset-password";
+  const fallbackRedirect = process.env.VITE_SITE_URL ? `${process.env.VITE_SITE_URL}/reset-password` : "https://www.shreeharikeerai.in/reset-password";
   const targetRedirect = redirectTo || fallbackRedirect;
 
   const { data: linkData, error: linkError } = await serverClient.auth.admin.generateLink({

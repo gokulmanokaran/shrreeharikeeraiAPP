@@ -418,7 +418,7 @@ export function getResetPasswordRedirectUrl(): string {
   // Production fallback URL (ensures email link points to live app and never fails with "Site can't be reached")
   const productionBase =
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_SITE_URL) ||
-    "https://shrreeharikeerai-app.vercel.app";
+    "https://www.shreeharikeerai.in";
   return `${productionBase.replace(/\/+$/, "")}/reset-password`;
 }
 
