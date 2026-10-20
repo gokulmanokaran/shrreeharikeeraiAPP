@@ -41,6 +41,10 @@ export function CategoryModal({
   const [editingImageId, setEditingImageId] = useState<string | null>(null);
   const [editingImageUrl, setEditingImageUrl] = useState("");
 
+  // Edit name for existing category
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [editingNameValue, setEditingNameValue] = useState("");
+
   const newFileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -129,6 +133,38 @@ export function CategoryModal({
       );
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleSaveName = async (cat: Category) => {
+    const trimmedName = editingNameValue.trim();
+    if (!trimmedName) {
+      setError("Category name cannot be empty.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    const updatedCategory: Category = {
+      ...cat,
+      name: trimmedName,
+    };
+
+    try {
+      const saved = await saveCategory(updatedCategory);
+      setSuccess(`Category name updated to "${saved.name || trimmedName}".`);
+      setCategories((prev) =>
+        prev.map((c) => (c.id === cat.id ? { ...c, name: saved.name || trimmedName } : c))
+      );
+      setEditingNameId(null);
+      setEditingNameValue("");
+      onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update category name.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -377,14 +413,72 @@ export function CategoryModal({
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-bold text-white truncate">{c.name}</p>
-                        {c.image ? (
-                          <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.2 rounded font-medium">
-                            Has Image
-                          </span>
-                        ) : null}
-                      </div>
+                      {editingNameId === c.id ? (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            handleSaveName(c);
+                          }}
+                          className="flex items-center gap-1.5 mb-1.5 flex-wrap sm:flex-nowrap"
+                        >
+                          <input
+                            type="text"
+                            value={editingNameValue}
+                            onChange={(e) => setEditingNameValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") {
+                                setEditingNameId(null);
+                                setEditingNameValue("");
+                              }
+                            }}
+                            className="h-8 px-2.5 bg-slate-900 border border-emerald-500 rounded-lg text-white text-xs font-bold focus:outline-none focus:ring-1 focus:ring-emerald-400 w-full sm:w-auto sm:min-w-[180px]"
+                            autoFocus
+                            placeholder="Category Name"
+                            disabled={loading}
+                          />
+                          <button
+                            type="submit"
+                            disabled={loading || !editingNameValue.trim()}
+                            className="h-8 px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-colors"
+                            title="Save Name"
+                          >
+                            <Check size={13} />
+                            <span>Save</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingNameId(null);
+                              setEditingNameValue("");
+                            }}
+                            disabled={loading}
+                            className="h-8 px-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg text-xs flex items-center justify-center cursor-pointer transition-colors"
+                            title="Cancel"
+                          >
+                            <X size={13} />
+                          </button>
+                        </form>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold text-white truncate">{c.name}</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingNameId(c.id);
+                              setEditingNameValue(c.name);
+                            }}
+                            title="Edit category name"
+                            className="p-1 rounded text-slate-400 hover:text-emerald-400 hover:bg-slate-700/50 transition-colors cursor-pointer"
+                          >
+                            <Edit3 size={13} />
+                          </button>
+                          {c.image ? (
+                            <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.2 rounded font-medium">
+                              Has Image
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
                       <p className="text-[10px] text-slate-500 font-mono truncate">ID: {c.id}</p>
                       {c.image && (
                         <p className="text-[10px] text-blue-400 truncate mt-0.5 max-w-sm">
@@ -395,6 +489,28 @@ export function CategoryModal({
 
                     {/* Action buttons */}
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {/* Edit name button */}
+                      <button
+                        onClick={() => {
+                          if (editingNameId === c.id) {
+                            setEditingNameId(null);
+                            setEditingNameValue("");
+                          } else {
+                            setEditingNameId(c.id);
+                            setEditingNameValue(c.name);
+                          }
+                        }}
+                        title="Edit category name"
+                        className={`h-8 px-2.5 rounded-lg border flex items-center gap-1.5 cursor-pointer transition-colors text-xs font-semibold ${
+                          editingNameId === c.id
+                            ? "bg-emerald-500/25 border-emerald-500/50 text-emerald-300"
+                            : "bg-emerald-500/15 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25"
+                        }`}
+                      >
+                        <Edit3 size={14} />
+                        <span>{editingNameId === c.id ? "Cancel Edit" : "Edit Name"}</span>
+                      </button>
+
                       {/* Edit image button */}
                       <button
                         onClick={() => {
