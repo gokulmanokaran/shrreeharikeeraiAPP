@@ -19,8 +19,8 @@ export const ALLOWED_PINCODES = [
   "641107",
 ] as const;
 
-export const DEFAULT_MINIMUM_ORDER = 199;
-export const MINIMUM_ORDER_VALUE = 199;
+export const DEFAULT_MINIMUM_ORDER = 99;
+export const MINIMUM_ORDER_VALUE = 99;
 export const FREE_DELIVERY_THRESHOLD = 300;
 export const BASE_DELIVERY_CHARGE = 30;
 export const FREE_DELIVERY_CHARGE = 0;

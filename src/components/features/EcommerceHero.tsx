@@ -99,7 +99,7 @@ export function EcommerceHero() {
                 📍
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-extrabold text-white leading-tight">Min Order ₹199</p>
+                <p className="text-[11px] font-extrabold text-white leading-tight">Min Order ₹99</p>
                 <p className="text-[9px] text-white/75 font-medium truncate">8 Coimbatore Pincodes</p>
               </div>
             </div>

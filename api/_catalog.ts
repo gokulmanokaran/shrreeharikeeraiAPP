@@ -640,7 +640,7 @@ export const ALLOWED_DELIVERY_PINCODES = [
   "641107",
 ] as const;
 
-export const SERVER_MINIMUM_ORDER = 199;
+export const SERVER_MINIMUM_ORDER = 99;
 export const SERVER_FREE_DELIVERY_THRESHOLD = 300;
 export const SERVER_BASE_DELIVERY_CHARGE = 30;
 export const SERVER_UNSUPPORTED_PINCODE_MESSAGE = "Sorry, delivery is not available for this pincode.";

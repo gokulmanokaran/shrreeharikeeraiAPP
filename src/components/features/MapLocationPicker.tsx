@@ -505,7 +505,7 @@ export function MapLocationPicker({
                         ✓ Delivery Available to {detectedPincode}
                       </p>
                       <p className="text-[11px] text-[#555555]">
-                        Delivery ₹30 (Free over ₹300) · Min order ₹199
+                        Delivery ₹30 (Free over ₹300) · Min order ₹99
                       </p>
                     </div>
                   </div>
