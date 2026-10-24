@@ -40,6 +40,8 @@ export interface PaymentPayload {
   address?: string;
   city?: string;
   state?: string;
+  lat?: number | null;
+  lng?: number | null;
   subtotal?: number;
   deliveryCharge?: number;
   items?: OrderItem[];
@@ -203,6 +205,8 @@ async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<{ or
         currency: payload.currency || "INR",
         pincode: payload.pincode,
         items: payload.items,
+        lat: payload.lat ?? null,
+        lng: payload.lng ?? null,
         notes: {
           storefrontOrderId: payload.orderId,
           userId: payload.userId || "",
@@ -213,6 +217,8 @@ async function createBackendRazorpayOrder(payload: PaymentPayload): Promise<{ or
           city: payload.city || "",
           state: payload.state || "",
           pincode: payload.pincode || "",
+          lat: payload.lat != null ? String(payload.lat) : "",
+          lng: payload.lng != null ? String(payload.lng) : "",
         },
       }),
       signal: controller.signal,

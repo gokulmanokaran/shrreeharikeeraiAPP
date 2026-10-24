@@ -25,8 +25,13 @@ export default async function handler(req: any, res?: any): Promise<any> {
   }
 
   try {
-    const { amount, receipt, currency = "INR", notes, pincode: rawPincode, items } = body || {};
+    const { amount, receipt, currency = "INR", notes, pincode: rawPincode, items, lat: rawLat, lng: rawLng } = body || {};
     const effectivePincode = String(rawPincode || notes?.pincode || "").trim();
+
+    // Parse lat/lng — may come as number or string
+    const lat: number | null = rawLat != null && rawLat !== "" ? Number(rawLat) : (notes?.lat ? Number(notes.lat) : null);
+    const lng: number | null = rawLng != null && rawLng !== "" ? Number(rawLng) : (notes?.lng ? Number(notes.lng) : null);
+    const mapsLink = lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : "";
 
     // ── 1. Strict Server Pincode Validation ──────────────────────────────────
     if (!effectivePincode || !isValidServerPincode(effectivePincode)) {
@@ -157,6 +162,9 @@ export default async function handler(req: any, res?: any): Promise<any> {
           city: notes?.city || "",
           state: notes?.state || "",
           pincode: effectivePincode,
+          lat: lat ?? null,
+          lng: lng ?? null,
+          maps_link: mapsLink,
           subtotal,
           delivery_charge: deliveryCharge,
           discount: 0,

@@ -289,7 +289,7 @@ function appendOrderToSheet(data) {
       data.pincode || "",
       data.lat || "",
       data.lng || "",
-      mapsLink,
+      mapsLink ? "=HYPERLINK(\"" + mapsLink + "\",\"📍 Open in Maps\")" : "",
       productsSummary,
       data.totalQuantity || (data.items ? data.items.reduce(function (a, b) { return a + (b.quantity || 1); }, 0) : 1),
       data.subtotal || 0,
@@ -301,7 +301,7 @@ function appendOrderToSheet(data) {
     ];
 
     sheet.appendRow(row);
-    Logger.log("[appendOrderToSheet] Row appended for order: " + orderId + " | Payment: " + paymentId);
+    Logger.log("[appendOrderToSheet] Row appended for order: " + orderId + " | Payment: " + paymentId + " | MapsLink: " + (mapsLink || "EMPTY"));
     return { appended: true, duplicate: false };
 
   } finally {

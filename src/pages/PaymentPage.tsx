@@ -253,6 +253,8 @@ export default function PaymentPage() {
         address: activeOrder.address,
         city: activeOrder.city,
         state: activeOrder.state,
+        lat: activeOrder.lat ?? null,
+        lng: activeOrder.lng ?? null,
         subtotal: activeOrder.subtotal,
         deliveryCharge: activeOrder.deliveryCharge,
         description: `Shree Hari Keerai — Order #${sessionOrderId}`,
