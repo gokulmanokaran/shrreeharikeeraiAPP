@@ -18,6 +18,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../store/CartContext";
 import { useDelivery } from "../store/DeliveryContext";
 import { useProductCatalog } from "../store/ProductContext";
+import { fetchLiveProducts, findProductById } from "../services/productService";
 import { Button } from "../components/ui/Button";
 import { MapLocationPicker, type MapLocationResult } from "../components/features/MapLocationPicker";
 import {
@@ -98,7 +99,7 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const { items, subtotal } = useCart();
   const { pincode, setPincode, savedLocation, saveLocation } = useDelivery();
-  const { getProductById } = useProductCatalog();
+  const { products, getProductById } = useProductCatalog();
 
   const minOrder = MINIMUM_ORDER_VALUE;
   const charge = calculateDeliveryCharge(subtotal);
@@ -248,29 +249,7 @@ export default function CheckoutPage() {
     setShowAddressEdit(true);
   }, [setPincode, saveLocation]);
 
-  const handleProceedToPayment = () => {
-    if (subtotal < minOrder) {
-      navigate("/cart");
-      return;
-    }
-
-    // 1. Live stock verification before proceeding
-    for (const item of items) {
-      const live = getProductById(item.product.id);
-      if (live) {
-        if (!live.inStock || (live.stockQuantity !== undefined && live.stockQuantity <= 0)) {
-          alert(`Sorry, "${live.name}" is currently out of stock. Please remove it from your cart.`);
-          navigate("/cart");
-          return;
-        }
-        if (live.stockQuantity !== undefined && item.quantity > live.stockQuantity) {
-          alert(`Sorry, only ${live.stockQuantity} unit(s) of "${live.name}" are available in stock.`);
-          navigate("/cart");
-          return;
-        }
-      }
-    }
-
+  const handleProceedToPayment = async () => {
     const formData: CheckoutFormData = {
       fullName: fullName.trim(),
       mobile: mobile.trim(),
@@ -286,6 +265,71 @@ export default function CheckoutPage() {
       return;
     }
 
+    setPlacing(true);
+
+    // 1. Authoritative Live Catalog Verification from Supabase
+    let liveCatalog = products;
+    try {
+      const fresh = await fetchLiveProducts();
+      if (fresh && fresh.length > 0) {
+        liveCatalog = fresh;
+      }
+    } catch {
+      // Fallback to active catalog
+    }
+
+    let verifiedSubtotal = 0;
+    const validatedOrderItems: any[] = [];
+
+    for (const item of items) {
+      const live = findProductById(liveCatalog, item.product.id);
+
+      if (!live || live.active === false) {
+        alert(`Sorry, "${item.product.name}" is no longer available in the store. Please remove it from your cart.`);
+        setPlacing(false);
+        navigate("/cart");
+        return;
+      }
+
+      if (!live.inStock || (live.stockQuantity !== undefined && live.stockQuantity <= 0)) {
+        alert(`Sorry, "${live.name}" is currently out of stock. Please remove it from your cart.`);
+        setPlacing(false);
+        navigate("/cart");
+        return;
+      }
+
+      if (live.stockQuantity !== undefined && item.quantity > live.stockQuantity) {
+        alert(`Sorry, only ${live.stockQuantity} unit(s) of "${live.name}" are available in stock. Please reduce the quantity in your cart.`);
+        setPlacing(false);
+        navigate("/cart");
+        return;
+      }
+
+      const verifiedPrice = Number(live.price || 0);
+      verifiedSubtotal += verifiedPrice * item.quantity;
+
+      validatedOrderItems.push({
+        id: item.product.id,
+        productId: item.product.productId || (item.product as any).parentId || item.product.id,
+        variantId: item.product.variantId,
+        name: live.name,
+        nameTamil: live.nameTamil || "",
+        quantity: item.quantity,
+        price: verifiedPrice,
+        unit: live.unit,
+      });
+    }
+
+    if (verifiedSubtotal < minOrder) {
+      alert(`Minimum order value is ₹${minOrder}. Your current verified subtotal is ₹${verifiedSubtotal}.`);
+      setPlacing(false);
+      navigate("/cart");
+      return;
+    }
+
+    const verifiedDeliveryCharge = calculateDeliveryCharge(verifiedSubtotal);
+    const verifiedTotal = verifiedSubtotal + verifiedDeliveryCharge;
+
     try {
       localStorage.setItem(
         GUEST_STORAGE_KEY,
@@ -296,18 +340,6 @@ export default function CheckoutPage() {
     }
 
     isNavigatingRef.current = true;
-    setPlacing(true);
-
-    const orderItems = items.map((i) => ({
-      id: i.product.id,
-      productId: i.product.productId || (i.product as any).parentId || i.product.id,
-      variantId: i.product.variantId,
-      name: i.product.name,
-      nameTamil: i.product.nameTamil,
-      quantity: i.quantity,
-      price: i.product.price,
-      unit: i.product.unit,
-    }));
 
     // Build full address string
     const fullAddress = [
@@ -326,11 +358,11 @@ export default function CheckoutPage() {
     const pendingOrder = {
       orderId: "",
       userId: user?.id || profile?.id || undefined,
-      total,
-      subtotal,
+      total: verifiedTotal,
+      subtotal: verifiedSubtotal,
       discount: 0,
       discountPercentage: 0,
-      deliveryCharge: charge,
+      deliveryCharge: verifiedDeliveryCharge,
       fullName: fullName.trim(),
       mobile: mobile.trim(),
       alternateMobile: alternateMobile.trim() || undefined,
@@ -346,14 +378,12 @@ export default function CheckoutPage() {
       state: delivery.state || "Tamil Nadu",
       houseNo: delivery.houseNo,
       landmark: delivery.landmark,
-      items: orderItems,
+      items: validatedOrderItems,
       createdAt: new Date().toISOString(),
       paymentStatus: "Pending",
     };
 
     // Save pending order to sessionStorage only (session-scoped, never leaks into new orders).
-    // Do NOT save to localStorage — stale localStorage data is the primary source of
-    // old Order IDs and customer details appearing in new checkouts.
     try {
       sessionStorage.setItem("shreehari_pending_order", JSON.stringify(pendingOrder));
     } catch {

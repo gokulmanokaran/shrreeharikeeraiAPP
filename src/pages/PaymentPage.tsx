@@ -26,7 +26,7 @@ import { Button } from "../components/ui/Button";
 import { OrderSuccessModal } from "../components/features/OrderSuccessModal";
 import { processPayment } from "../services/paymentService";
 import { submitOrderNotification, type OrderNotificationPayload } from "../services/orderService";
-import { deductLiveProductStock } from "../services/productService";
+import { deductLiveProductStock, fetchLiveProducts, findProductById } from "../services/productService";
 
 const PENDING_ORDER_KEY = "shreehari_pending_order";
 
@@ -242,10 +242,64 @@ export default function PaymentPage() {
     setErrorMessage(null);
 
     try {
+      // ── 0. Re-fetch and strictly validate live product information from Supabase ──
+      let verifiedCatalog: any[] = [];
+      try {
+        verifiedCatalog = await fetchLiveProducts();
+      } catch {
+        /* fallback */
+      }
+
+      const currentOrderItems = orderItems || [];
+      let verifiedSubtotal = 0;
+      const validatedPaymentItems: any[] = [];
+
+      if (verifiedCatalog.length > 0) {
+        for (const item of currentOrderItems) {
+          const live = findProductById(verifiedCatalog, String(item.productId || item.id || ""));
+          if (!live || live.active === false) {
+            setIsProcessing(false);
+            setErrorMessage(`Sorry, "${item.name}" is no longer available. Please return to cart to update your order.`);
+            return;
+          }
+          if (!live.inStock || (live.stockQuantity !== undefined && live.stockQuantity <= 0)) {
+            setIsProcessing(false);
+            setErrorMessage(`Sorry, "${live.name}" is currently out of stock. Please return to cart.`);
+            return;
+          }
+          if (live.stockQuantity !== undefined && item.quantity > live.stockQuantity) {
+            setIsProcessing(false);
+            setErrorMessage(`Sorry, only ${live.stockQuantity} unit(s) of "${live.name}" are available in stock.`);
+            return;
+          }
+
+          const livePrice = Number(live.price || 0);
+          verifiedSubtotal += livePrice * item.quantity;
+          validatedPaymentItems.push({
+            id: item.id,
+            productId: item.productId || item.id,
+            variantId: item.variantId,
+            name: live.name,
+            nameTamil: live.nameTamil || "",
+            quantity: item.quantity,
+            price: livePrice,
+            unit: live.unit,
+          });
+        }
+      } else {
+        for (const item of currentOrderItems) {
+          verifiedSubtotal += Number(item.price || 0) * item.quantity;
+          validatedPaymentItems.push(item);
+        }
+      }
+
+      const verifiedDeliveryCharge = activeOrder.deliveryCharge ?? 0;
+      const verifiedTotal = verifiedSubtotal + verifiedDeliveryCharge;
+
       const methodInfo = paymentMethodDetails[selectedMethod] || paymentMethodDetails.gpay;
       const paymentResult = await processPayment({
         orderId: sessionOrderId,
-        amount: total,
+        amount: verifiedTotal,
         currency: "INR",
         customerName: fullName,
         customerEmail: email || user?.email || undefined,
@@ -255,22 +309,13 @@ export default function PaymentPage() {
         state: activeOrder.state,
         lat: activeOrder.lat ?? null,
         lng: activeOrder.lng ?? null,
-        subtotal: activeOrder.subtotal,
-        deliveryCharge: activeOrder.deliveryCharge,
+        subtotal: verifiedSubtotal,
+        deliveryCharge: verifiedDeliveryCharge,
         description: `Shree Hari Keerai — Order #${sessionOrderId}`,
         userId: currentUserId,
         preferredMethod: methodInfo.rzpMethod,
         pincode: activeOrder.pincode,
-        items: (orderItems || []).map((i) => ({
-          id: i.id,
-          productId: i.productId || i.id,
-          variantId: i.variantId,
-          name: i.name,
-          nameTamil: i.nameTamil,
-          quantity: i.quantity,
-          price: i.price,
-          unit: i.unit,
-        })),
+        items: validatedPaymentItems,
         onPaymentFailed: (errorMsg) => {
           setErrorMessage(errorMsg);
         },

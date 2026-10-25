@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Minus, Plus, Trash2, ShoppingBag, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Minus, Plus, Trash2, ShoppingBag, AlertTriangle, Info } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../store/CartContext";
 import { useProductCatalog } from "../store/ProductContext";
@@ -27,16 +27,24 @@ export default function CartPage() {
   const total = subtotal + charge;
   const shortfall = Math.max(0, minOrder - subtotal);
 
-  // Check if any items are currently out of stock in live catalog
+  // 1. Check if any items are currently out of stock or inactive in live catalog
   const hasOutOfStockItems = items.some((item) => {
     const live = getProductById(item.product.id);
-    if (live) {
-      return !live.inStock || (live.stockQuantity !== undefined && live.stockQuantity <= 0);
-    }
-    return !item.product.inStock || (item.product.stockQuantity !== undefined && item.product.stockQuantity <= 0);
+    if (!live || live.active === false) return true;
+    return !live.inStock || (live.stockQuantity !== undefined && live.stockQuantity <= 0);
   });
 
-  const canCheckout = subtotal >= minOrder && !hasOutOfStockItems;
+  // 2. Check if any items exceed current available stock
+  const hasStockExceededItems = items.some((item) => {
+    const live = getProductById(item.product.id);
+    const availableStock = live?.stockQuantity ?? item.product.stockQuantity;
+    return availableStock !== undefined && item.quantity > availableStock;
+  });
+
+  // 3. Check if any items had a price change since being added
+  const hasPriceChangedItems = items.some((item) => item.priceChanged);
+
+  const canCheckout = subtotal >= minOrder && !hasOutOfStockItems && !hasStockExceededItems;
 
   if (items.length === 0) {
     return (
@@ -121,6 +129,30 @@ export default function CartPage() {
           </motion.div>
         )}
 
+        {/* Stock quantity exceeded warning banner */}
+        {hasStockExceededItems && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mx-4 mt-4 bg-amber-50 border border-amber-200 rounded-[14px] px-4 py-3 flex items-center gap-2 text-amber-800 text-xs font-bold"
+          >
+            <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+            <span>Some item quantities exceed current stock limits. Please reduce the quantity to proceed.</span>
+          </motion.div>
+        )}
+
+        {/* Price update banner */}
+        {hasPriceChangedItems && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-[14px] px-4 py-2.5 flex items-center gap-2 text-blue-800 text-xs font-semibold"
+          >
+            <Info size={16} className="text-blue-600 shrink-0" />
+            <span>Product prices updated to the latest live store prices.</span>
+          </motion.div>
+        )}
+
         {/* Minimum order notice */}
         {subtotal < minOrder && (
           <motion.div
@@ -142,10 +174,13 @@ export default function CartPage() {
           <AnimatePresence initial={false}>
             {items.map((item) => {
               const live = getProductById(item.product.id);
-              const liveInStock = live
-                ? live.inStock && (live.stockQuantity === undefined || live.stockQuantity > 0)
-                : item.product.inStock && (item.product.stockQuantity === undefined || item.product.stockQuantity > 0);
+              const isInactive = !live || live.active === false;
+              const liveInStock = !isInactive &&
+                live.inStock &&
+                (live.stockQuantity === undefined || live.stockQuantity > 0);
               const availableStock = live?.stockQuantity ?? item.product.stockQuantity;
+              const isStockExceeded =
+                availableStock !== undefined && item.quantity > availableStock;
               const isMaxStockReached =
                 availableStock !== undefined && item.quantity >= availableStock;
 
@@ -158,7 +193,11 @@ export default function CartPage() {
                   exit={{ opacity: 0, x: -20, height: 0, marginBottom: 0 }}
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   className={`bg-white rounded-[16px] p-3 flex gap-3 border ${
-                    !liveInStock ? "border-red-300 bg-red-50/20" : "border-[#EAEAEA]"
+                    !liveInStock
+                      ? "border-red-300 bg-red-50/20"
+                      : isStockExceeded
+                      ? "border-amber-300 bg-amber-50/20"
+                      : "border-[#EAEAEA]"
                   }`}
                   style={{ boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}
                 >
@@ -201,7 +240,11 @@ export default function CartPage() {
                     {/* Stock Status text */}
                     {!liveInStock ? (
                       <p className="text-xs font-bold text-red-600 mt-0.5">
-                        Out of Stock — Please remove
+                        {isInactive ? "Product unavailable — Please remove" : "Out of Stock — Please remove"}
+                      </p>
+                    ) : isStockExceeded ? (
+                      <p className="text-xs font-bold text-amber-600 mt-0.5">
+                        Only {availableStock} items available. Please reduce the quantity.
                       </p>
                     ) : availableStock !== undefined && availableStock <= 5 ? (
                       <p className="text-xs font-semibold text-amber-600 mt-0.5">
@@ -211,6 +254,15 @@ export default function CartPage() {
                       <p className="text-xs text-[#00A651] font-semibold mt-0.5">
                         In Stock
                       </p>
+                    )}
+
+                    {/* Price change badge */}
+                    {item.priceChanged && item.previousPrice !== undefined && (
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md text-[10px] font-bold mt-1">
+                        <span>Price updated:</span>
+                        <span className="text-blue-400 line-through">₹{item.previousPrice}</span>
+                        <span className="text-blue-800 font-extrabold">₹{item.product.price}</span>
+                      </div>
                     )}
 
                     <div className="flex items-center justify-between mt-2">
@@ -229,7 +281,9 @@ export default function CartPage() {
                           initial={{ scale: 0.7 }}
                           animate={{ scale: 1 }}
                           transition={{ type: "spring", stiffness: 500 }}
-                          className="text-sm font-black text-[#00A651] w-5 text-center"
+                          className={`text-sm font-black w-5 text-center ${
+                            isStockExceeded ? "text-amber-700 font-extrabold" : "text-[#00A651]"
+                          }`}
                         >
                           {item.quantity}
                         </motion.span>
@@ -321,6 +375,8 @@ export default function CartPage() {
           >
             {hasOutOfStockItems
               ? "Remove Out of Stock Items to Proceed"
+              : hasStockExceededItems
+              ? "Reduce Quantities to Proceed"
               : canCheckout
               ? `Proceed to Checkout · ₹${total}`
               : `Add ₹${shortfall} more to proceed`}

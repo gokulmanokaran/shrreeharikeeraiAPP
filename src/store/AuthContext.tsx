@@ -100,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.removeItem("shreehari_guest_details");
             localStorage.removeItem("shreehari_pending_order");
             localStorage.removeItem("shreehari_submitted_order_ids");
+            localStorage.removeItem("shreehari_cart");
             sessionStorage.removeItem("shreehari_pending_order");
           }
         } catch {}
