@@ -189,8 +189,23 @@ function areCategoriesEqual(a: Category[], b: Category[]): boolean {
       }
     };
 
+    // Sync catalog when network recovers (offline → online transition)
+    // This is the key fix: after reconnect, re-sync products & categories so
+    // price/stock changes made offline are reflected immediately.
+    let onlineDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const handleOnline = () => {
+      if (onlineDebounceTimer) clearTimeout(onlineDebounceTimer);
+      onlineDebounceTimer = setTimeout(() => {
+        console.info("[ProductContext] Network reconnected — re-syncing catalog");
+        // Force sync by resetting the last sync time
+        lastSyncTimeRef.current = 0;
+        syncCatalog(false);
+      }, 500);
+    };
+
     window.addEventListener("focus", handleVisibilityOrFocus);
     document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+    window.addEventListener("online", handleOnline);
 
     // Infrequent 5-minute heartbeat fallback if websocket is temporarily interrupted
     const interval = setInterval(() => {
@@ -205,6 +220,8 @@ function areCategoriesEqual(a: Category[], b: Category[]): boolean {
     return () => {
       window.removeEventListener("focus", handleVisibilityOrFocus);
       document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+      window.removeEventListener("online", handleOnline);
+      if (onlineDebounceTimer) clearTimeout(onlineDebounceTimer);
       clearInterval(interval);
     };
   }, [syncCatalog]);

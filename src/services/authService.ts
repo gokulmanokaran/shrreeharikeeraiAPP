@@ -38,6 +38,17 @@ export function invalidateProfileCache(userId?: string) {
   else profileCache.clear();
 }
 
+// Request timeout helper: prevents network queries from hanging on mobile network reconnects
+async function withTimeout<T>(promise: Promise<T>, ms = 5000, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 export async function fetchProfile(
   userId: string,
   fallback?: {
@@ -67,11 +78,17 @@ export async function fetchProfile(
   }
 
   try {
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, full_name, email, mobile")
-      .eq("id", userId)
-      .maybeSingle();
+    const queryPromise = (async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, mobile")
+        .eq("id", userId)
+        .maybeSingle();
+      if (error) return null;
+      return data ?? null;
+    })();
+
+    const data = await withTimeout(queryPromise, 5000, null);
 
     if (data) {
       if (!data.full_name && fallback?.fullName) {

@@ -41,10 +41,26 @@ export interface CartValidationReport {
 // Track whether the cart_items table is verified in Supabase
 let _tableMissingNotified = false;
 
+// Request timeout helper: prevents network requests from hanging indefinitely
+export async function withTimeout<T>(
+  promise: Promise<T>,
+  ms = 5000,
+  fallback: T
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 // ── Supabase Cart Operations ──────────────────────────────────────────────────
 
 /**
  * Fetch all cart items for the authenticated user directly from Supabase.
+ * Protected with a 5000ms timeout so offline reconnects never stall the app.
  */
 export async function fetchUserCart(
   userId: string
@@ -59,24 +75,33 @@ export async function fetchUserCart(
   }
 
   try {
-    const { data, error } = await supabase
-      .from("cart_items")
-      .select("id, user_id, product_id, quantity, added_price, created_at, updated_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true });
+    const queryPromise = (async () => {
+      const { data, error } = await supabase
+        .from("cart_items")
+        .select("id, user_id, product_id, quantity, added_price, created_at, updated_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: true });
 
-    if (error) {
-      const isMissing = error.code === "PGRST205" || error.message?.includes("cart_items");
-      if (isMissing && !_tableMissingNotified) {
-        _tableMissingNotified = true;
-        console.warn(
-          "[CartService] Notice: public.cart_items table not found in Supabase. Run supabase/cart-items.sql to activate DB persistence."
-        );
+      if (error) {
+        const isMissing = error.code === "PGRST205" || error.message?.includes("cart_items");
+        if (isMissing && !_tableMissingNotified) {
+          _tableMissingNotified = true;
+          console.warn(
+            "[CartService] Notice: public.cart_items table not found in Supabase. Run supabase/cart-items.sql to activate DB persistence."
+          );
+        }
+        return { success: false, data: [], isTableMissing: isMissing, error: error.message };
       }
-      return { success: false, data: [], isTableMissing: isMissing, error: error.message };
-    }
 
-    return { success: true, data: data || [] };
+      return { success: true, data: data || [] };
+    })();
+
+    return await withTimeout(queryPromise, 5000, {
+      success: false,
+      data: [],
+      isTableMissing: false,
+      error: "Cart fetch timed out (network reconnecting)",
+    });
   } catch (err: any) {
     return { success: false, data: [], error: err?.message || "Failed to fetch user cart" };
   }
@@ -99,21 +124,28 @@ export async function upsertCartItem(
   if (!supabase) return { success: false, error: "Supabase client unavailable" };
 
   try {
-    const { error } = await supabase.from("cart_items").upsert(
-      {
-        user_id: userId,
-        product_id: productId,
-        quantity,
-        added_price: addedPrice ?? null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,product_id" }
-    );
+    const upsertPromise = (async () => {
+      const { error } = await supabase.from("cart_items").upsert(
+        {
+          user_id: userId,
+          product_id: productId,
+          quantity,
+          added_price: addedPrice ?? null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,product_id" }
+      );
 
-    if (error) {
-      return { success: false, error: error.message };
-    }
-    return { success: true };
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    })();
+
+    return await withTimeout(upsertPromise, 5000, {
+      success: false,
+      error: "Upsert timed out",
+    });
   } catch (err: any) {
     return { success: false, error: err?.message || "Failed to upsert cart item" };
   }
@@ -132,14 +164,21 @@ export async function removeCartItem(
   if (!supabase) return { success: false, error: "Supabase client unavailable" };
 
   try {
-    const { error } = await supabase
-      .from("cart_items")
-      .delete()
-      .eq("user_id", userId)
-      .eq("product_id", productId);
+    const deletePromise = (async () => {
+      const { error } = await supabase
+        .from("cart_items")
+        .delete()
+        .eq("user_id", userId)
+        .eq("product_id", productId);
 
-    if (error) return { success: false, error: error.message };
-    return { success: true };
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    })();
+
+    return await withTimeout(deletePromise, 5000, {
+      success: false,
+      error: "Remove timed out",
+    });
   } catch (err: any) {
     return { success: false, error: err?.message || "Failed to remove cart item" };
   }
@@ -157,9 +196,16 @@ export async function clearUserCart(
   if (!supabase) return { success: false, error: "Supabase client unavailable" };
 
   try {
-    const { error } = await supabase.from("cart_items").delete().eq("user_id", userId);
-    if (error) return { success: false, error: error.message };
-    return { success: true };
+    const clearPromise = (async () => {
+      const { error } = await supabase.from("cart_items").delete().eq("user_id", userId);
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    })();
+
+    return await withTimeout(clearPromise, 5000, {
+      success: false,
+      error: "Clear timed out",
+    });
   } catch (err: any) {
     return { success: false, error: err?.message || "Failed to clear user cart" };
   }
@@ -178,33 +224,35 @@ export async function mergeGuestItemsIntoUserCart(
   if (!supabase) return;
 
   try {
-    // 1. Fetch current user cart from Supabase to merge quantities
-    const { data: existingRows } = await supabase
-      .from("cart_items")
-      .select("product_id, quantity")
-      .eq("user_id", userId);
+    const mergePromise = (async () => {
+      const { data: existingRows } = await supabase
+        .from("cart_items")
+        .select("product_id, quantity")
+        .eq("user_id", userId);
 
-    const existingMap = new Map<string, number>();
-    (existingRows || []).forEach((row) => {
-      existingMap.set(row.product_id, row.quantity);
-    });
+      const existingMap = new Map<string, number>();
+      (existingRows || []).forEach((row) => {
+        existingMap.set(row.product_id, row.quantity);
+      });
 
-    // 2. Prepare merged upsert payload
-    const upserts = guestItems.map((item) => {
-      const existingQty = existingMap.get(item.product.id) || 0;
-      const mergedQty = Math.max(item.quantity, existingQty);
-      return {
-        user_id: userId,
-        product_id: item.product.id,
-        quantity: mergedQty,
-        added_price: item.product.price,
-        updated_at: new Date().toISOString(),
-      };
-    });
+      const upserts = guestItems.map((item) => {
+        const existingQty = existingMap.get(item.product.id) || 0;
+        const mergedQty = Math.max(item.quantity, existingQty);
+        return {
+          user_id: userId,
+          product_id: item.product.id,
+          quantity: mergedQty,
+          added_price: item.product.price,
+          updated_at: new Date().toISOString(),
+        };
+      });
 
-    if (upserts.length > 0) {
-      await supabase.from("cart_items").upsert(upserts, { onConflict: "user_id,product_id" });
-    }
+      if (upserts.length > 0) {
+        await supabase.from("cart_items").upsert(upserts, { onConflict: "user_id,product_id" });
+      }
+    })();
+
+    await withTimeout(mergePromise, 6000, undefined);
   } catch (err) {
     console.warn("[CartService] Guest cart merge notice:", err);
   }
@@ -219,6 +267,8 @@ export async function mergeGuestItemsIntoUserCart(
  * - Detects stock reductions below cart quantity
  * - Detects inactive or deleted products
  * - Computes verified subtotal using ONLY fresh database prices
+ * - STABILITY GUARANTEE: hasChanges is strictly false once items have converged,
+ *   preventing infinite re-render loops when price changes occur!
  */
 export function validateCartWithLiveCatalog(
   currentItems: CartItem[],
@@ -250,7 +300,10 @@ export function validateCartWithLiveCatalog(
 
     // 1. Product Deleted or Inactive in Catalog
     if (!live || live.active === false) {
-      hasChanges = true;
+      const wasAlreadyInactive = item.isInactive === true && item.isOutOfStock === true;
+      if (!wasAlreadyInactive) {
+        hasChanges = true;
+      }
       hasOutOfStock = true;
       return {
         ...item,
@@ -277,16 +330,17 @@ export function validateCartWithLiveCatalog(
       hasStockExceeded = true;
     }
 
-    // 4. Price Change Check
+    // 4. Price Change Check: compare live price against the price when added
     const recordedPrice = item.addedPrice ?? item.product.price;
     const isPriceChanged = live.price !== recordedPrice;
     if (isPriceChanged) {
       hasPriceChange = true;
-      hasChanges = true;
     }
 
-    // 5. Detect changes in product metadata (name, unit, image, stock, price)
-    if (
+    // 5. Detect if in-memory item state actually needs an update
+    // CRITICAL: Only mark hasChanges = true if the current item fields in memory
+    // actually differ from the freshly evaluated properties.
+    const needsUpdate =
       item.product.price !== live.price ||
       item.product.mrp !== live.mrp ||
       item.product.inStock !== live.inStock ||
@@ -294,11 +348,14 @@ export function validateCartWithLiveCatalog(
       item.product.name !== live.name ||
       item.product.unit !== live.unit ||
       item.product.image !== live.image ||
-      item.isOutOfStock !== !isLiveInStock ||
-      item.stockExceeded !== isStockExceeded ||
+      Boolean(item.isOutOfStock) !== !isLiveInStock ||
+      Boolean(item.stockExceeded) !== isStockExceeded ||
       item.availableStock !== availableStock ||
-      item.priceChanged !== isPriceChanged
-    ) {
+      Boolean(item.priceChanged) !== isPriceChanged ||
+      item.addedPrice !== recordedPrice ||
+      Boolean(item.isInactive);
+
+    if (needsUpdate) {
       hasChanges = true;
     }
 

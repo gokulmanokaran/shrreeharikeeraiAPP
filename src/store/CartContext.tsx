@@ -48,6 +48,42 @@ type CartAction =
   | { type: "DECREMENT"; productId: string }
   | { type: "CLEAR" };
 
+// ── Equality Helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Deep-equal check for cart items.
+ * CRITICAL: This prevents the HYDRATE action from triggering a re-render when
+ * the catalog-validation effect produces an identical item array — which is the
+ * root cause of the infinite 60-100fps re-render loop on offline → online transition.
+ */
+function areCartItemsEqual(a: CartItem[], b: CartItem[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const ai = a[i];
+    const bi = b[i];
+    if (
+      ai.product.id !== bi.product.id ||
+      ai.quantity !== bi.quantity ||
+      ai.addedPrice !== bi.addedPrice ||
+      ai.product.price !== bi.product.price ||
+      ai.product.mrp !== bi.product.mrp ||
+      ai.product.inStock !== bi.product.inStock ||
+      ai.product.stockQuantity !== bi.product.stockQuantity ||
+      ai.product.name !== bi.product.name ||
+      ai.product.image !== bi.product.image ||
+      Boolean(ai.priceChanged) !== Boolean(bi.priceChanged) ||
+      Boolean(ai.isOutOfStock) !== Boolean(bi.isOutOfStock) ||
+      Boolean(ai.stockExceeded) !== Boolean(bi.stockExceeded) ||
+      Boolean(ai.isInactive) !== Boolean(bi.isInactive) ||
+      ai.availableStock !== bi.availableStock
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // ── Reducer ──────────────────────────────────────────────────────────────────
 
 function cartReducer(state: CartState, action: CartAction): CartState {
@@ -55,8 +91,15 @@ function cartReducer(state: CartState, action: CartAction): CartState {
     case "SET_LOADING":
       return { ...state, isLoading: action.isLoading };
 
-    case "HYDRATE":
+    case "HYDRATE": {
+      // IDEMPOTENCY GUARANTEE: If items are deeply equal and we're not loading,
+      // return the same state object reference so React bails out of re-rendering.
+      // This terminates the potential infinite loop when price changes stabilise.
+      if (!state.isLoading && areCartItemsEqual(state.items, action.items)) {
+        return state;
+      }
       return { ...state, items: action.items, isLoading: false };
+    }
 
     case "ADD": {
       const existing = state.items.find((i) => i.product.id === action.product.id);
@@ -187,9 +230,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }, 2200);
   }, []);
 
+  // Concurrency lock: prevents parallel cart loads from racing each other
+  const isSyncingCartRef = useRef(false);
+
   // ── Core Loader: Hydrate user cart from Supabase ────────────────────────────
   const loadCartFromSupabase = useCallback(
     async (userId: string, isSilent = false) => {
+      // Prevent concurrent re-entrant calls (e.g. realtime + online event firing simultaneously)
+      if (isSyncingCartRef.current) return;
+      isSyncingCartRef.current = true;
+
       if (!isSilent) dispatch({ type: "SET_LOADING", isLoading: true });
 
       try {
@@ -231,6 +281,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.warn("[CartContext] Error loading user cart from Supabase:", err);
         if (!isSilent) dispatch({ type: "SET_LOADING", isLoading: false });
+      } finally {
+        isSyncingCartRef.current = false;
       }
     },
     []
@@ -285,19 +337,48 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, loadCartFromSupabase]);
 
-  // ── Real-Time Catalog Validation: Always reflect database price/stock updates ─
+  // ── Online Reconnect Handler: Re-sync cart when network recovers ─────────────
   useEffect(() => {
-    if (state.items.length === 0 || !products || products.length === 0) return;
+    let onlineDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const handleOnline = () => {
+      if (onlineDebounceTimer) clearTimeout(onlineDebounceTimer);
+      onlineDebounceTimer = setTimeout(() => {
+        const currentUser = userRef.current;
+        if (currentUser) {
+          console.info("[CartContext] Network reconnected — re-syncing cart");
+          // isSilent=true so no loading spinner flicker on reconnect
+          loadCartFromSupabase(currentUser.id, true);
+        }
+      }, 800);
+    };
+
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      if (onlineDebounceTimer) clearTimeout(onlineDebounceTimer);
+    };
+  }, [loadCartFromSupabase]);
+
+  // ── Real-Time Catalog Validation: Always reflect database price/stock updates ─
+  // CRITICAL FIX: Depend only on [products], NOT on [products, state.items].
+  // Depending on state.items causes an infinite loop:
+  //   products change → validate → HYDRATE → state.items changes → validate again → ...
+  // Instead, read current items from stateRef (always fresh, no stale closure).
+  useEffect(() => {
+    const currentItems = stateRef.current.items;
+    if (currentItems.length === 0 || !products || products.length === 0) return;
 
     const { items: updated, hasChanges } = validateCartWithLiveCatalog(
-      state.items,
+      currentItems,
       products
     );
 
     if (hasChanges) {
       dispatch({ type: "HYDRATE", items: updated });
     }
-  }, [products, state.items]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products]); // INTENTIONALLY only products — reads items via stateRef.current
 
   // ── Cart Mutators with Optimistic UI & Supabase Persistence ─────────────────
 

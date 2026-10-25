@@ -112,50 +112,73 @@ export function cacheCategories(categories: Category[]): void {
   }
 }
 
+// Request timeout helper: prevents network queries from hanging on mobile network reconnects
+async function withTimeout<T>(promise: Promise<T>, ms = 5000, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 /**
  * Fetches live products from Supabase Database (or REST API fallback)
  */
 export async function fetchLiveProducts(): Promise<Product[]> {
   const supabase = getSupabaseClient();
 
-  // 1. Fetch from Supabase Database
+  // 1. Fetch from Supabase Database (guaranteed 5s max timeout)
   if (supabase) {
     try {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-        .eq("active", true)
-        .order("sort_order", { ascending: true });
+      const queryPromise = (async () => {
+        const { data, error } = await supabase
+          .from("products")
+          .select("*")
+          .eq("active", true)
+          .order("sort_order", { ascending: true });
 
-      if (!error && Array.isArray(data) && data.length > 0) {
-        const mapped = data.map(mapDbProductToProduct);
-        cacheProducts(mapped);
-        return mapped;
-      }
-      if (error) {
-        console.warn("[ProductService] Supabase products error:", error.message);
-      }
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const mapped = data.map(mapDbProductToProduct);
+          cacheProducts(mapped);
+          return mapped;
+        }
+        if (error) {
+          console.warn("[ProductService] Supabase products error:", error.message);
+        }
+        return null;
+      })();
+
+      const result = await withTimeout(queryPromise, 5000, null);
+      if (result) return result;
     } catch (err) {
       console.warn("[ProductService] Supabase fetch exception:", err);
     }
   }
 
-  // 2. Fallback to API endpoint
+  // 2. Fallback to API endpoint (guaranteed 4s max timeout)
   try {
-    const res = await fetch(`/api/products?_ts=${Date.now()}`, {
-      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
-      cache: "no-store",
-    });
+    const apiPromise = (async () => {
+      const res = await fetch(`/api/products?_ts=${Date.now()}`, {
+        headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+        cache: "no-store",
+      });
 
-    if (res.ok) {
-      const json = await res.json();
-      const list = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
-      if (list.length > 0) {
-        const mapped = list.map(mapDbProductToProduct);
-        cacheProducts(mapped);
-        return mapped;
+      if (res.ok) {
+        const json = await res.json();
+        const list = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+        if (list.length > 0) {
+          const mapped = list.map(mapDbProductToProduct);
+          cacheProducts(mapped);
+          return mapped;
+        }
       }
-    }
+      return null;
+    })();
+
+    const apiResult = await withTimeout(apiPromise, 4000, null);
+    if (apiResult) return apiResult;
   } catch (err) {
     console.info("[ProductService] API fallback unreachable. Serving cached catalog.", err);
   }
@@ -169,44 +192,56 @@ export async function fetchLiveProducts(): Promise<Product[]> {
 export async function fetchLiveCategories(): Promise<Category[]> {
   const supabase = getSupabaseClient();
 
-  // 1. Fetch from Supabase Database
+  // 1. Fetch from Supabase Database (guaranteed 5s max timeout)
   if (supabase) {
     try {
-      const { data, error } = await supabase
-        .from("categories")
-        .select("*")
-        .eq("active", true)
-        .order("sort_order", { ascending: true });
+      const queryPromise = (async () => {
+        const { data, error } = await supabase
+          .from("categories")
+          .select("*")
+          .eq("active", true)
+          .order("sort_order", { ascending: true });
 
-      if (!error && Array.isArray(data) && data.length > 0) {
-        const mapped = data.map(mapDbCategoryToCategory);
-        cacheCategories(mapped);
-        return mapped;
-      }
-      if (error) {
-        console.warn("[ProductService] Supabase categories error:", error.message);
-      }
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const mapped = data.map(mapDbCategoryToCategory);
+          cacheCategories(mapped);
+          return mapped;
+        }
+        if (error) {
+          console.warn("[ProductService] Supabase categories error:", error.message);
+        }
+        return null;
+      })();
+
+      const result = await withTimeout(queryPromise, 5000, null);
+      if (result) return result;
     } catch (err) {
       console.warn("[ProductService] Supabase categories fetch exception:", err);
     }
   }
 
-  // 2. Fallback to API endpoint
+  // 2. Fallback to API endpoint (guaranteed 4s max timeout)
   try {
-    const res = await fetch(`/api/products?type=categories&_ts=${Date.now()}`, {
-      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
-      cache: "no-store",
-    });
+    const apiPromise = (async () => {
+      const res = await fetch(`/api/products?type=categories&_ts=${Date.now()}`, {
+        headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+        cache: "no-store",
+      });
 
-    if (res.ok) {
-      const json = await res.json();
-      const list = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
-      if (list.length > 0) {
-        const mapped = list.map(mapDbCategoryToCategory);
-        cacheCategories(mapped);
-        return mapped;
+      if (res.ok) {
+        const json = await res.json();
+        const list = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+        if (list.length > 0) {
+          const mapped = list.map(mapDbCategoryToCategory);
+          cacheCategories(mapped);
+          return mapped;
+        }
       }
-    }
+      return null;
+    })();
+
+    const apiResult = await withTimeout(apiPromise, 4000, null);
+    if (apiResult) return apiResult;
   } catch (err) {
     console.info("[ProductService] API fallback unreachable. Serving cached categories.", err);
   }

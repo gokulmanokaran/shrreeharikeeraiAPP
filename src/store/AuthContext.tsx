@@ -60,7 +60,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Hydrate existing session from Supabase on mount
+    // Hydrate existing session from Supabase on mount.
+    // CRITICAL: setInitializing(false) must fire immediately once we know if
+    // there's a session or not. loadProfile runs as a background task so the
+    // profile network call NEVER blocks app startup or navigation.
     supabase.auth
       .getSession()
       .then(({ data }) => {
@@ -68,9 +71,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data.session) {
           setSession(data.session);
           setUser(data.session.user);
-          loadProfile(data.session.user).finally(() => {
-            if (!cancelled) setInitializing(false);
-          });
+          // Immediately unblock the app — profile loads in background
+          setInitializing(false);
+          // Background profile fetch (does NOT block navigation)
+          loadProfile(data.session.user).catch(() => {});
         } else {
           setSession(null);
           setUser(null);
